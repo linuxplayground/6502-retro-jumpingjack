@@ -1,0 +1,578 @@
+ca65 V2.19 - Git 5e5dd1d6c
+Main file   : vdp.s
+Current file: vdp.s
+
+000000r 1               ; vim: set ft=asm_ca65 ts=4 sw=4 et:vdp
+000000r 1               .include "io.inc"
+000000r 2               ; vim: set ft=asm_ca65 ts=4 sw=4 et:
+000000r 2               vdp_ram = $bf30
+000000r 2               vdp_reg = $bf31
+000000r 2               
+000000r 1               .include "app.inc"
+000000r 2               ; vim: set ft=asm_ca65 et ts=4 sw=4
+000000r 2               SFOS        = $200
+000000r 2               REBOOT      = SFOS      + 3
+000000r 2               WBOOT       = REBOOT    + 3
+000000r 2               CONOUT      = WBOOT     + 3
+000000r 2               CONIN       = CONOUT    + 3
+000000r 2               CONST       = CONIN     + 3
+000000r 2               CONPUTS     = CONST     + 3
+000000r 2               CONBYTE     = CONPUTS   + 3
+000000r 2               CONBEEP     = CONBYTE   + 3
+000000r 2               SN_START    = CONBEEP   + 3
+000000r 2               SN_SILENCE  = SN_START  + 3
+000000r 2               SN_STOP     = SN_SILENCE + 3
+000000r 2               SN_SEND     = SN_STOP   + 3
+000000r 2               LED_ON      = SN_SEND   + 3
+000000r 2               LED_OFF     = LED_ON    + 3
+000000r 2               GET_BUTTON  = LED_OFF   + 3
+000000r 2               ERROR_CODE  = GET_BUTTON + 3
+000000r 2               
+000000r 2               RSTFAR      = $231
+000000r 2               
+000000r 2               REGA        = $23F
+000000r 2               REGX        = REGA   + 1
+000000r 2               REGY        = REGX   + 1
+000000r 2               ;
+000000r 2               ; hard coded addresses that SFCP uses
+000000r 2               FCB          = $380
+000000r 2               FCB2         = $3A0
+000000r 2               CMDLINE      = $300
+000000r 2               CMDOFFSET    = $3C0    ; pointer into CMDLINE
+000000r 2               SFOS_BUF     = $400
+000000r 2               SFOS_BUF_END = $600
+000000r 2               
+000000r 2               VDP_SYNC     = $65F
+000000r 2               TICKS        = $660    ; 32bit value holding number of 60hz periods since boot
+000000r 2               
+000000r 2               ; vdp stuffs
+000000r 2               NAMETABLE               = $3800
+000000r 2               COLORTABLE              = $2000
+000000r 2               PATTERNTABLE            = $0000
+000000r 2               SPRITEATTRIBUTETABLE    = $3B00
+000000r 2               SPRITEPATTERNTABLE      = $1800
+000000r 2               
+000000r 1               .include "macro.inc"
+000000r 2               ; vim: set ft=asm_ca65 ts=4 sw=4 et:vdp
+000000r 2               .macro div8
+000000r 2                   .repeat 3
+000000r 2                       lsr
+000000r 2                   .endrepeat
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro mul8
+000000r 2                   .repeat 3
+000000r 2                       asl
+000000r 2                   .endrepeat
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro mul32
+000000r 2                   .repeat 5
+000000r 2                       asl
+000000r 2                   .endrepeat
+000000r 2               .endmacro
+000000r 2               
+000000r 2               
+000000r 1               
+000000r 1               .export vdp_g2_init, vdp_clear_screenbuf, vdp_wait, vdp_flush
+000000r 1               .export vdp_screenbuf, vdp_xy_to_ptr, vdp_print_xy, vdp_char_xy
+000000r 1               .export vdp_read_char_xy, vdp_color_char
+000000r 1               
+000000r 1               .autoimport
+000000r 1               
+000000r 1               .globalzp ptr1, ptr2
+000000r 1               
+000000r 1               .zeropage
+000000r 1               
+000000r 1               .bss
+000000r 1               .align $100
+000000r 1  xx xx xx xx  vdp_screenbuf: .res $300
+000004r 1  xx xx xx xx  
+000008r 1  xx xx xx xx  
+000300r 1               
+000300r 1               .code
+000000r 1               
+000000r 1               vdp_xy_to_ptr:
+000000r 1  48               pha
+000001r 1  A9 rr            lda #<vdp_screenbuf
+000003r 1  85 rr            sta ptr1
+000005r 1  A9 rr            lda #>vdp_screenbuf
+000007r 1  85 rr            sta ptr1+1
+000009r 1               
+000009r 1  98               tya
+00000Ar 1  4A 4A 4A         div8
+00000Dr 1  18               clc
+00000Er 1  65 rr            adc ptr1+1
+000010r 1  85 rr            sta ptr1+1
+000012r 1  98               tya
+000013r 1  29 07            and  #$07
+000015r 1  0A 0A 0A 0A      mul32
+000019r 1  0A           
+00001Ar 1  85 rr            sta ptr1
+00001Cr 1               @add_x:
+00001Cr 1  18               clc
+00001Dr 1  8A               txa
+00001Er 1  65 rr            adc ptr1
+000020r 1  85 rr            sta ptr1
+000022r 1  A9 00            lda #0
+000024r 1  65 rr            adc ptr1+1
+000026r 1  85 rr            sta ptr1+1
+000028r 1               @return:
+000028r 1  68               pla
+000029r 1  60               rts
+00002Ar 1               
+00002Ar 1               vdp_char_xy:
+00002Ar 1  20 rr rr         jsr vdp_xy_to_ptr
+00002Dr 1  92 rr            sta (ptr1)
+00002Fr 1  60               rts
+000030r 1               
+000030r 1               vdp_read_char_xy:
+000030r 1  20 rr rr         jsr vdp_xy_to_ptr
+000033r 1  B2 rr            lda (ptr1)
+000035r 1  60               rts
+000036r 1               
+000036r 1               ; string pointer in ptr2
+000036r 1               vdp_print_xy:
+000036r 1  20 rr rr         jsr vdp_xy_to_ptr
+000039r 1  A0 00            ldy #0
+00003Br 1  B1 rr        :   lda (ptr2),y
+00003Dr 1  F0 05            beq :+
+00003Fr 1  91 rr            sta (ptr1),y
+000041r 1  C8               iny
+000042r 1  80 F7            bra :-
+000044r 1  60           :   rts
+000045r 1               
+000045r 1               vdp_g2_init:
+000045r 1  20 rr rr         jsr clear_vram
+000048r 1  A9 rr            lda #<g2_regs
+00004Ar 1  A2 rr            ldx #>g2_regs
+00004Cr 1  20 rr rr         jsr init_regs
+00004Fr 1  A9 6E            lda #$6e
+000051r 1  20 rr rr         jsr setup_colortable
+000054r 1  20 rr rr         jsr load_font
+000057r 1  20 rr rr         jsr vdp_clear_screenbuf
+00005Ar 1  60               rts
+00005Br 1               
+00005Br 1               clear_vram:
+00005Br 1  A9 00            lda #0
+00005Dr 1  A2 00            ldx #0
+00005Fr 1  20 rr rr         jsr set_write_address
+000062r 1  A9 00            lda #0
+000064r 1  A0 00            ldy #0
+000066r 1  A2 3F            ldx #$3F
+000068r 1  8D 30 BF     :   sta vdp_ram
+00006Br 1  C8               iny
+00006Cr 1  D0 FA            bne :-
+00006Er 1  CA               dex
+00006Fr 1  D0 F7            bne :-
+000071r 1  60               rts
+000072r 1               
+000072r 1               ; INPUT: A = character
+000072r 1               ;        X = color
+000072r 1               vdp_color_char:
+000072r 1  DA               phx
+000073r 1  0A               asl
+000074r 1  0A               asl
+000075r 1  0A               asl     ; x 8
+000076r 1  85 rr            sta ptr1+0
+000078r 1  A9 00            lda #<COLORTABLE
+00007Ar 1  18               clc
+00007Br 1  65 rr            adc ptr1+0
+00007Dr 1  85 rr            sta ptr1+0
+00007Fr 1  A9 20            lda #>COLORTABLE
+000081r 1  69 00            adc #0
+000083r 1  85 rr            sta ptr1+1
+000085r 1  A5 rr            lda ptr1+0
+000087r 1  A6 rr            ldx ptr1+1
+000089r 1  20 rr rr         jsr set_write_address
+00008Cr 1  FA               plx
+00008Dr 1  8E 30 BF 8E      .repeat 8
+000091r 1  30 BF 8E 30  
+000095r 1  BF 8E 30 BF  
+0000A5r 1                       stx vdp_ram
+0000A5r 1                   .endrepeat
+0000A5r 1  60               rts
+0000A6r 1               
+0000A6r 1               
+0000A6r 1               vdp_wait:
+0000A6r 1  AD 5F 06         lda VDP_SYNC
+0000A9r 1  C9 80            cmp #$80
+0000ABr 1  D0 F9            bne vdp_wait
+0000ADr 1  9C 5F 06         stz VDP_SYNC
+0000B0r 1               .if 0
+0000B0r 1                   jsr CONIN
+0000B0r 1                   cmp #$1b
+0000B0r 1                   beq @exit
+0000B0r 1               .endif
+0000B0r 1  60               rts
+0000B1r 1               @exit:
+0000B1r 1  4C 06 02         jmp WBOOT
+0000B4r 1               
+0000B4r 1               vdp_flush:
+0000B4r 1  A9 00            lda #<NAMETABLE
+0000B6r 1  A2 38            ldx #>NAMETABLE
+0000B8r 1  20 rr rr         jsr set_write_address
+0000BBr 1  A9 rr            lda #<vdp_screenbuf
+0000BDr 1  85 rr            sta ptr1
+0000BFr 1  A9 rr            lda #>vdp_screenbuf
+0000C1r 1  85 rr            sta ptr1 + 1
+0000C3r 1  A0 00            ldy #0
+0000C5r 1  A2 04            ldx #4
+0000C7r 1  B1 rr        :   lda (ptr1),y
+0000C9r 1  8D 30 BF         sta vdp_ram
+0000CCr 1  C8               iny
+0000CDr 1  D0 F8            bne :-
+0000CFr 1  E6 rr            inc ptr1+1
+0000D1r 1  CA               dex
+0000D2r 1  D0 F3            bne :-
+0000D4r 1  60               rts
+0000D5r 1               
+0000D5r 1               vdp_clear_screenbuf:
+0000D5r 1  A9 rr            lda #<vdp_screenbuf
+0000D7r 1  85 rr            sta ptr1
+0000D9r 1  A9 rr            lda #>vdp_screenbuf
+0000DBr 1  85 rr            sta ptr1 + 1
+0000DDr 1  A0 00            ldy #0
+0000DFr 1  A2 04            ldx #4
+0000E1r 1  A9 20            lda #' '
+0000E3r 1  91 rr        :   sta (ptr1),y
+0000E5r 1  C8               iny
+0000E6r 1  D0 FB            bne :-
+0000E8r 1  E6 rr            inc ptr1+1
+0000EAr 1  CA               dex
+0000EBr 1  D0 F6            bne :-
+0000EDr 1  60               rts
+0000EEr 1               
+0000EEr 1               setup_colortable:
+0000EEr 1  A8               tay
+0000EFr 1  A9 00            lda #<COLORTABLE
+0000F1r 1  A2 20            ldx #>COLORTABLE
+0000F3r 1  20 rr rr         jsr set_write_address
+0000F6r 1  98               tya
+0000F7r 1  A0 00            ldy #0
+0000F9r 1  A2 04            ldx #4
+0000FBr 1  8D 30 BF     :   sta vdp_ram
+0000FEr 1  C8               iny
+0000FFr 1  D0 FA            bne :-
+000101r 1  CA               dex
+000102r 1  D0 F7            bne :-
+000104r 1  60               rts
+000105r 1               
+000105r 1               init_regs:
+000105r 1  85 rr            sta ptr1
+000107r 1  86 rr            stx ptr1+1
+000109r 1  A0 00            ldy #0
+00010Br 1  B1 rr        :   lda (ptr1),y
+00010Dr 1  8D 31 BF         sta vdp_reg
+000110r 1  98               tya
+000111r 1  09 80            ora #$80
+000113r 1  8D 31 BF         sta vdp_reg
+000116r 1  C8               iny
+000117r 1  C0 08            cpy #8
+000119r 1  D0 F0            bne :-
+00011Br 1  60               rts
+00011Cr 1               
+00011Cr 1               set_write_address:
+00011Cr 1  8D 31 BF         sta vdp_reg
+00011Fr 1  8A               txa
+000120r 1  09 40            ora #$40
+000122r 1  8D 31 BF         sta vdp_reg
+000125r 1  60               rts
+000126r 1               
+000126r 1               load_font:
+000126r 1  A9 00            lda #<PATTERNTABLE
+000128r 1  A2 00            ldx #>PATTERNTABLE
+00012Ar 1  20 rr rr         jsr set_write_address
+00012Dr 1  A9 rr            lda #<font_start
+00012Fr 1  85 rr            sta ptr1
+000131r 1  A9 rr            lda #>font_start
+000133r 1  85 rr            sta ptr1+1
+000135r 1  A0 00            ldy #0
+000137r 1  B1 rr        :   lda (ptr1),y
+000139r 1  8D 30 BF         sta vdp_ram
+00013Cr 1  A5 rr            lda ptr1
+00013Er 1  18               clc
+00013Fr 1  69 01            adc #1
+000141r 1  85 rr            sta ptr1
+000143r 1  A9 00            lda #0
+000145r 1  65 rr            adc ptr1+1
+000147r 1  85 rr            sta ptr1+1
+000149r 1  C9 rr            cmp #>font_end
+00014Br 1  D0 EA            bne :-
+00014Dr 1  A5 rr            lda ptr1
+00014Fr 1  C9 rr            cmp #<font_end
+000151r 1  D0 E4            bne :-
+000153r 1  60               rts
+000154r 1               
+000154r 1               .rodata
+000000r 1               g2_regs:
+000000r 1  02               .byte $02
+000001r 1  E0               .byte $e0
+000002r 1  0E               .byte $0e
+000003r 1  9F               .byte $9f
+000004r 1  00               .byte $00
+000005r 1  76               .byte $76
+000006r 1  03               .byte $03
+000007r 1  2B               .byte $2b
+000008r 1               
+000008r 1               font_start:
+000008r 1                   .include "font.s"
+000008r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 000H, */
+00000Cr 2  00 00 00 00  
+000010r 2  FF FF 00 00  .byte $FF,$FF,$00,$00,$00,$00,$00,$00 ; /*  DB 001H, PLATFORM LINE 2 Pixels top of cell */
+000014r 2  00 00 00 00  
+000018r 2  FC FC 00 00  .byte $FC,$FC,$00,$00,$00,$00,$00,$00 ; /*  DB 002H, GAP 11111100*/
+00001Cr 2  00 00 00 00  
+000020r 2  F0 F0 00 00  .byte $F0,$F0,$00,$00,$00,$00,$00,$00 ; /*  DB 003H, GAP 11110000*/
+000024r 2  00 00 00 00  
+000028r 2  C0 C0 00 00  .byte $C0,$C0,$00,$00,$00,$00,$00,$00 ; /*  DB 004H, GAP 11000000*/
+00002Cr 2  00 00 00 00  
+000030r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 005H, GAP 00000000*/
+000034r 2  00 00 00 00  
+000038r 2  03 03 00 00  .byte $03,$03,$00,$00,$00,$00,$00,$00 ; /*  DB 006H, GAP 00000011*/
+00003Cr 2  00 00 00 00  
+000040r 2  0F 0F 00 00  .byte $0F,$0F,$00,$00,$00,$00,$00,$00 ; /*  DB 007H, GAP 00001111*/
+000044r 2  00 00 00 00  
+000048r 2  3F 3F 00 00  .byte $3F,$3F,$00,$00,$00,$00,$00,$00 ; /*  DB 008H, GAP 00111111*/
+00004Cr 2  00 00 00 00  
+000050r 2  0C 0C 00 00  .byte $0C,$0C,$00,$00,$00,$00,$00,$00 ; /*  DB 009H, GAP 00001100*/
+000054r 2  00 00 00 00  
+000058r 2  30 30 00 00  .byte $30,$30,$00,$00,$00,$00,$00,$00 ; /*  DB 00AH, GAP 00110000*/
+00005Cr 2  00 00 00 00  
+000060r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 00BH, */
+000064r 2  00 00 00 00  
+000068r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 00CH, */
+00006Cr 2  00 00 00 00  
+000070r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 00DH, */
+000074r 2  00 00 00 00  
+000078r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 00EH, */
+00007Cr 2  00 00 00 00  
+000080r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 00FH, */
+000084r 2  00 00 00 00  
+000088r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 010H, */
+00008Cr 2  00 00 00 00  
+000090r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 011H, */
+000094r 2  00 00 00 00  
+000098r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 012H, */
+00009Cr 2  00 00 00 00  
+0000A0r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 013H, */
+0000A4r 2  00 00 00 00  
+0000A8r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 014H, */
+0000ACr 2  00 00 00 00  
+0000B0r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 015H, */
+0000B4r 2  00 00 00 00  
+0000B8r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 016H, */
+0000BCr 2  00 00 00 00  
+0000C0r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 017H, */
+0000C4r 2  00 00 00 00  
+0000C8r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 018H, */
+0000CCr 2  00 00 00 00  
+0000D0r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 019H, */
+0000D4r 2  00 00 00 00  
+0000D8r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 01AH, */
+0000DCr 2  00 00 00 00  
+0000E0r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 01BH, */
+0000E4r 2  00 00 00 00  
+0000E8r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 01CH, */
+0000ECr 2  00 00 00 00  
+0000F0r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 01DH, */
+0000F4r 2  00 00 00 00  
+0000F8r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 01EH, */
+0000FCr 2  00 00 00 00  
+000100r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 01FH, */
+000104r 2  00 00 00 00  
+000108r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 020H, */
+00010Cr 2  00 00 00 00  
+000110r 2  18 18 18 18  .byte $18,$18,$18,$18,$18,$00,$18,$00 ; /*  DB 021H, */
+000114r 2  18 00 18 00  
+000118r 2  6C 6C 00 00  .byte $6C,$6C,$00,$00,$00,$00,$00,$00 ; /*  DB 022H, */
+00011Cr 2  00 00 00 00  
+000120r 2  6C 6C FE 6C  .byte $6C,$6C,$FE,$6C,$FE,$6C,$6C,$00 ; /*  DB 023H, */
+000124r 2  FE 6C 6C 00  
+000128r 2  7C D6 D0 7C  .byte $7C,$D6,$D0,$7C,$16,$D6,$7C,$00 ; /*  DB 024H, */
+00012Cr 2  16 D6 7C 00  
+000130r 2  C6 CE 1C 38  .byte $C6,$CE,$1C,$38,$70,$E6,$C6,$00 ; /*  DB 025H, */
+000134r 2  70 E6 C6 00  
+000138r 2  38 6C 6C 30  .byte $38,$6C,$6C,$30,$DA,$CC,$76,$00 ; /*  DB 026H, */
+00013Cr 2  DA CC 76 00  
+000140r 2  38 38 18 70  .byte $38,$38,$18,$70,$00,$00,$00,$00 ; /*  DB 027H, */
+000144r 2  00 00 00 00  
+000148r 2  18 30 60 60  .byte $18,$30,$60,$60,$60,$30,$18,$00 ; /*  DB 028H, */
+00014Cr 2  60 30 18 00  
+000150r 2  60 30 18 18  .byte $60,$30,$18,$18,$18,$30,$60,$00 ; /*  DB 029H, */
+000154r 2  18 30 60 00  
+000158r 2  92 54 38 FE  .byte $92,$54,$38,$FE,$38,$54,$92,$00 ; /*  DB 02AH, */
+00015Cr 2  38 54 92 00  
+000160r 2  00 18 18 7E  .byte $00,$18,$18,$7E,$7E,$18,$18,$00 ; /*  DB 02BH, */
+000164r 2  7E 18 18 00  
+000168r 2  00 00 00 00  .byte $00,$00,$00,$00,$38,$38,$18,$70 ; /*  DB 02CH, */
+00016Cr 2  38 38 18 70  
+000170r 2  00 00 00 3C  .byte $00,$00,$00,$3C,$3C,$00,$00,$00 ; /*  DB 02DH, */
+000174r 2  3C 00 00 00  
+000178r 2  00 00 00 00  .byte $00,$00,$00,$00,$1C,$1C,$1C,$00 ; /*  DB 02EH, */
+00017Cr 2  1C 1C 1C 00  
+000180r 2  06 0E 1C 38  .byte $06,$0E,$1C,$38,$70,$E0,$C0,$00 ; /*  DB 02FH, */
+000184r 2  70 E0 C0 00  
+000188r 2  7C C6 CE FE  .byte $7C,$C6,$CE,$FE,$F6,$C6,$7C,$00 ; /*  DB 030H, */
+00018Cr 2  F6 C6 7C 00  
+000190r 2  18 38 18 18  .byte $18,$38,$18,$18,$18,$18,$3C,$00 ; /*  DB 031H, */
+000194r 2  18 18 3C 00  
+000198r 2  7C CE CE 1C  .byte $7C,$CE,$CE,$1C,$38,$70,$FE,$00 ; /*  DB 032H, */
+00019Cr 2  38 70 FE 00  
+0001A0r 2  7C C6 06 1C  .byte $7C,$C6,$06,$1C,$06,$C6,$7C,$00 ; /*  DB 033H, */
+0001A4r 2  06 C6 7C 00  
+0001A8r 2  0C 1C 3C 6C  .byte $0C,$1C,$3C,$6C,$CC,$FE,$0C,$00 ; /*  DB 034H, */
+0001ACr 2  CC FE 0C 00  
+0001B0r 2  FE C0 FC C6  .byte $FE,$C0,$FC,$C6,$06,$C6,$7C,$00 ; /*  DB 035H, */
+0001B4r 2  06 C6 7C 00  
+0001B8r 2  7C C6 C0 FC  .byte $7C,$C6,$C0,$FC,$C6,$C6,$7C,$00 ; /*  DB 036H, */
+0001BCr 2  C6 C6 7C 00  
+0001C0r 2  FE CE 0C 18  .byte $FE,$CE,$0C,$18,$38,$38,$38,$00 ; /*  DB 037H, */
+0001C4r 2  38 38 38 00  
+0001C8r 2  7C C6 C6 7C  .byte $7C,$C6,$C6,$7C,$C6,$C6,$7C,$00 ; /*  DB 038H, */
+0001CCr 2  C6 C6 7C 00  
+0001D0r 2  7C C6 C6 7E  .byte $7C,$C6,$C6,$7E,$06,$C6,$7C,$00 ; /*  DB 039H, */
+0001D4r 2  06 C6 7C 00  
+0001D8r 2  38 38 38 00  .byte $38,$38,$38,$00,$38,$38,$38,$00 ; /*  DB 03AH, */
+0001DCr 2  38 38 38 00  
+0001E0r 2  38 38 38 00  .byte $38,$38,$38,$00,$38,$18,$18,$00 ; /*  DB 03BH, */
+0001E4r 2  38 18 18 00  
+0001E8r 2  0C 18 30 60  .byte $0C,$18,$30,$60,$30,$18,$0C,$00 ; /*  DB 03CH, */
+0001ECr 2  30 18 0C 00  
+0001F0r 2  00 7C 7C 00  .byte $00,$7C,$7C,$00,$7C,$7C,$00,$00 ; /*  DB 03DH, */
+0001F4r 2  7C 7C 00 00  
+0001F8r 2  60 30 18 0C  .byte $60,$30,$18,$0C,$18,$30,$60,$00 ; /*  DB 03EH, */
+0001FCr 2  18 30 60 00  
+000200r 2  7C C6 CC 18  .byte $7C,$C6,$CC,$18,$18,$00,$18,$00 ; /*  DB 03FH, */
+000204r 2  18 00 18 00  
+000208r 2  7C 82 BA 8A  .byte $7C,$82,$BA,$8A,$BA,$AA,$94,$00 ; /*  DB 040H, */
+00020Cr 2  BA AA 94 00  
+000210r 2  38 6C C6 C6  .byte $38,$6C,$C6,$C6,$FE,$C6,$C6,$00 ; /*  DB 041H, */
+000214r 2  FE C6 C6 00  
+000218r 2  FC C6 C6 FC  .byte $FC,$C6,$C6,$FC,$C6,$C6,$FC,$00 ; /*  DB 042H, */
+00021Cr 2  C6 C6 FC 00  
+000220r 2  7C C6 C0 C0  .byte $7C,$C6,$C0,$C0,$C0,$C6,$7C,$00 ; /*  DB 043H, */
+000224r 2  C0 C6 7C 00  
+000228r 2  F8 CC C6 C6  .byte $F8,$CC,$C6,$C6,$C6,$CC,$F8,$00 ; /*  DB 044H, */
+00022Cr 2  C6 CC F8 00  
+000230r 2  FE C0 C0 F8  .byte $FE,$C0,$C0,$F8,$C0,$C0,$FE,$00 ; /*  DB 045H, */
+000234r 2  C0 C0 FE 00  
+000238r 2  FE C0 C0 F8  .byte $FE,$C0,$C0,$F8,$C0,$C0,$C0,$00 ; /*  DB 046H, */
+00023Cr 2  C0 C0 C0 00  
+000240r 2  7C C6 C0 C0  .byte $7C,$C6,$C0,$C0,$CE,$C6,$7E,$00 ; /*  DB 047H, */
+000244r 2  CE C6 7E 00  
+000248r 2  C6 C6 C6 FE  .byte $C6,$C6,$C6,$FE,$C6,$C6,$C6,$00 ; /*  DB 048H, */
+00024Cr 2  C6 C6 C6 00  
+000250r 2  3C 18 18 18  .byte $3C,$18,$18,$18,$18,$18,$3C,$00 ; /*  DB 049H, */
+000254r 2  18 18 3C 00  
+000258r 2  1E 0C 0C 0C  .byte $1E,$0C,$0C,$0C,$CC,$CC,$78,$00 ; /*  DB 04AH, */
+00025Cr 2  CC CC 78 00  
+000260r 2  C6 CC D8 F0  .byte $C6,$CC,$D8,$F0,$D8,$CC,$C6,$00 ; /*  DB 04BH, */
+000264r 2  D8 CC C6 00  
+000268r 2  C0 C0 C0 C0  .byte $C0,$C0,$C0,$C0,$C0,$C0,$FE,$00 ; /*  DB 04CH, */
+00026Cr 2  C0 C0 FE 00  
+000270r 2  C6 FE FE D6  .byte $C6,$FE,$FE,$D6,$C6,$C6,$C6,$00 ; /*  DB 04DH, */
+000274r 2  C6 C6 C6 00  
+000278r 2  E6 E6 F6 D6  .byte $E6,$E6,$F6,$D6,$DE,$CE,$CE,$00 ; /*  DB 04EH, */
+00027Cr 2  DE CE CE 00  
+000280r 2  7C C6 C6 C6  .byte $7C,$C6,$C6,$C6,$C6,$C6,$7C,$00 ; /*  DB 04FH, */
+000284r 2  C6 C6 7C 00  
+000288r 2  FC C6 C6 FC  .byte $FC,$C6,$C6,$FC,$C0,$C0,$C0,$00 ; /*  DB 050H, */
+00028Cr 2  C0 C0 C0 00  
+000290r 2  7C C6 C6 C6  .byte $7C,$C6,$C6,$C6,$DE,$CC,$7E,$00 ; /*  DB 051H, */
+000294r 2  DE CC 7E 00  
+000298r 2  FC C6 C6 FC  .byte $FC,$C6,$C6,$FC,$D8,$CC,$C6,$00 ; /*  DB 052H, */
+00029Cr 2  D8 CC C6 00  
+0002A0r 2  7C C6 C0 7C  .byte $7C,$C6,$C0,$7C,$06,$C6,$7C,$00 ; /*  DB 053H, */
+0002A4r 2  06 C6 7C 00  
+0002A8r 2  7E 18 18 18  .byte $7E,$18,$18,$18,$18,$18,$18,$00 ; /*  DB 054H, */
+0002ACr 2  18 18 18 00  
+0002B0r 2  C6 C6 C6 C6  .byte $C6,$C6,$C6,$C6,$C6,$C6,$7C,$00 ; /*  DB 055H, */
+0002B4r 2  C6 C6 7C 00  
+0002B8r 2  C6 C6 C6 6C  .byte $C6,$C6,$C6,$6C,$6C,$38,$38,$00 ; /*  DB 056H, */
+0002BCr 2  6C 38 38 00  
+0002C0r 2  C6 C6 C6 D6  .byte $C6,$C6,$C6,$D6,$D6,$FE,$6C,$00 ; /*  DB 057H, */
+0002C4r 2  D6 FE 6C 00  
+0002C8r 2  C6 C6 6C 38  .byte $C6,$C6,$6C,$38,$6C,$C6,$C6,$00 ; /*  DB 058H, */
+0002CCr 2  6C C6 C6 00  
+0002D0r 2  66 66 66 3C  .byte $66,$66,$66,$3C,$18,$18,$18,$00 ; /*  DB 059H, */
+0002D4r 2  18 18 18 00  
+0002D8r 2  FE 0E 1C 38  .byte $FE,$0E,$1C,$38,$70,$E0,$FE,$00 ; /*  DB 05AH, */
+0002DCr 2  70 E0 FE 00  
+0002E0r 2  78 60 60 60  .byte $78,$60,$60,$60,$60,$60,$78,$00 ; /*  DB 05BH, */
+0002E4r 2  60 60 78 00  
+0002E8r 2  3C 42 99 A1  .byte $3C,$42,$99,$A1,$A1,$99,$42,$3C ; /*  DB 05CH, */
+0002ECr 2  A1 99 42 3C  
+0002F0r 2  78 18 18 18  .byte $78,$18,$18,$18,$18,$18,$78,$00 ; /*  DB 05DH, */
+0002F4r 2  18 18 78 00  
+0002F8r 2  38 6C C6 00  .byte $38,$6C,$C6,$00,$00,$00,$00,$00 ; /*  DB 05EH, */
+0002FCr 2  00 00 00 00  
+000300r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$7E,$7E ; /*  DB 05FH, */
+000304r 2  00 00 7E 7E  
+000308r 2  15 35 75 F5  .byte $15,$35,$75,$F5,$75,$35,$15,$00 ; /*  DB 060H, */
+00030Cr 2  75 35 15 00  
+000310r 2  00 00 3C 06  .byte $00,$00,$3C,$06,$3E,$66,$3E,$00 ; /*  DB 061H, */
+000314r 2  3E 66 3E 00  
+000318r 2  60 60 7C 66  .byte $60,$60,$7C,$66,$66,$66,$7C,$00 ; /*  DB 062H, */
+00031Cr 2  66 66 7C 00  
+000320r 2  00 00 3C 66  .byte $00,$00,$3C,$66,$60,$66,$3C,$00 ; /*  DB 063H, */
+000324r 2  60 66 3C 00  
+000328r 2  06 06 3E 66  .byte $06,$06,$3E,$66,$66,$66,$3E,$00 ; /*  DB 064H, */
+00032Cr 2  66 66 3E 00  
+000330r 2  00 00 3C 66  .byte $00,$00,$3C,$66,$7E,$60,$3E,$00 ; /*  DB 065H, */
+000334r 2  7E 60 3E 00  
+000338r 2  1C 36 30 78  .byte $1C,$36,$30,$78,$30,$30,$30,$00 ; /*  DB 066H, */
+00033Cr 2  30 30 30 00  
+000340r 2  00 00 3E 66  .byte $00,$00,$3E,$66,$3E,$06,$66,$3C ; /*  DB 067H, */
+000344r 2  3E 06 66 3C  
+000348r 2  60 60 7C 66  .byte $60,$60,$7C,$66,$66,$66,$66,$00 ; /*  DB 068H, */
+00034Cr 2  66 66 66 00  
+000350r 2  18 00 18 18  .byte $18,$00,$18,$18,$18,$18,$18,$00 ; /*  DB 069H, */
+000354r 2  18 18 18 00  
+000358r 2  06 00 06 06  .byte $06,$00,$06,$06,$06,$06,$66,$3C ; /*  DB 06AH, */
+00035Cr 2  06 06 66 3C  
+000360r 2  60 60 66 6C  .byte $60,$60,$66,$6C,$78,$6C,$66,$00 ; /*  DB 06BH, */
+000364r 2  78 6C 66 00  
+000368r 2  18 18 18 18  .byte $18,$18,$18,$18,$18,$18,$18,$00 ; /*  DB 06CH, */
+00036Cr 2  18 18 18 00  
+000370r 2  00 00 6C FE  .byte $00,$00,$6C,$FE,$D6,$D6,$D6,$00 ; /*  DB 06DH, */
+000374r 2  D6 D6 D6 00  
+000378r 2  00 00 5C 7E  .byte $00,$00,$5C,$7E,$66,$66,$66,$00 ; /*  DB 06EH, */
+00037Cr 2  66 66 66 00  
+000380r 2  00 00 7C C6  .byte $00,$00,$7C,$C6,$C6,$C6,$7C,$00 ; /*  DB 06FH, */
+000384r 2  C6 C6 7C 00  
+000388r 2  00 00 7C 66  .byte $00,$00,$7C,$66,$66,$7C,$60,$60 ; /*  DB 070H, */
+00038Cr 2  66 7C 60 60  
+000390r 2  00 00 7C CC  .byte $00,$00,$7C,$CC,$CC,$7C,$0C,$0E ; /*  DB 071H, */
+000394r 2  CC 7C 0C 0E  
+000398r 2  00 00 6C 76  .byte $00,$00,$6C,$76,$60,$60,$60,$00 ; /*  DB 072H, */
+00039Cr 2  60 60 60 00  
+0003A0r 2  00 00 3C 60  .byte $00,$00,$3C,$60,$38,$0C,$78,$00 ; /*  DB 073H, */
+0003A4r 2  38 0C 78 00  
+0003A8r 2  18 18 3C 18  .byte $18,$18,$3C,$18,$18,$18,$18,$00 ; /*  DB 074H, */
+0003ACr 2  18 18 18 00  
+0003B0r 2  00 00 66 66  .byte $00,$00,$66,$66,$66,$66,$3C,$00 ; /*  DB 075H, */
+0003B4r 2  66 66 3C 00  
+0003B8r 2  00 00 66 66  .byte $00,$00,$66,$66,$66,$3C,$18,$00 ; /*  DB 076H, */
+0003BCr 2  66 3C 18 00  
+0003C0r 2  00 00 C6 C6  .byte $00,$00,$C6,$C6,$D6,$FE,$6C,$00 ; /*  DB 077H, */
+0003C4r 2  D6 FE 6C 00  
+0003C8r 2  00 00 C6 6C  .byte $00,$00,$C6,$6C,$38,$6C,$C6,$00 ; /*  DB 078H, */
+0003CCr 2  38 6C C6 00  
+0003D0r 2  00 00 66 66  .byte $00,$00,$66,$66,$66,$3C,$18,$70 ; /*  DB 079H, */
+0003D4r 2  66 3C 18 70  
+0003D8r 2  00 00 7E 0C  .byte $00,$00,$7E,$0C,$18,$30,$7E,$00 ; /*  DB 07AH, */
+0003DCr 2  18 30 7E 00  
+0003E0r 2  18 30 30 70  .byte $18,$30,$30,$70,$30,$30,$18,$00 ; /*  DB 07BH, */
+0003E4r 2  30 30 18 00  
+0003E8r 2  18 18 18 18  .byte $18,$18,$18,$18,$18,$18,$18,$00 ; /*  DB 07CH, */
+0003ECr 2  18 18 18 00  
+0003F0r 2  60 30 30 38  .byte $60,$30,$30,$38,$30,$30,$60,$00 ; /*  DB 07DH, */
+0003F4r 2  30 30 60 00  
+0003F8r 2  A8 AC AE AF  .byte $A8,$AC,$AE,$AF,$AE,$AC,$A8,$00 ; /*  DB 07EH, */
+0003FCr 2  AE AC A8 00  
+000400r 2  00 00 00 00  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; /*  DB 07FH  */
+000404r 2  00 00 00 00  
+000408r 2               
+000408r 1               font_end:
+000408r 1               

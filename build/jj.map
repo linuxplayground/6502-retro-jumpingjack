@@ -1,0 +1,76 @@
+Modules list:
+-------------
+main.o:
+    CODE              Offs=000000  Size=000242  Align=00001  Fill=0000
+    RODATA            Offs=000000  Size=000066  Align=00001  Fill=0000
+    BSS               Offs=000000  Size=000002  Align=00001  Fill=0000
+    DATA              Offs=000000  Size=00000C  Align=00001  Fill=0000
+    ZEROPAGE          Offs=000000  Size=000007  Align=00001  Fill=0000
+vdp.o:
+    CODE              Offs=000242  Size=000154  Align=00001  Fill=0000
+    RODATA            Offs=000066  Size=000408  Align=00001  Fill=0000
+    BSS               Offs=000100  Size=000300  Align=00100  Fill=00FE
+
+
+Segment list:
+-------------
+Name                   Start     End    Size  Align
+----------------------------------------------------
+ZEROPAGE              000000  000006  000007  00001
+CODE                  000800  000B95  000396  00001
+RODATA                000B96  001003  00046E  00001
+DATA                  001004  00100F  00000C  00001
+BSS                   001100  0014FF  000400  00100
+
+
+Exports list by name:
+---------------------
+__BSS_LOAD__              001100 RLA    __BSS_SIZE__              000400 REA    
+__STACKSIZE__             000800 REA    __STACKSTART__            00BEFF REA    
+ptr1                      000000 RLZ    ptr2                      000002 RLZ    
+vdp_char_xy               000A6C RLA    vdp_flush                 000AF6 RLA    
+vdp_g2_init               000A87 RLA    vdp_read_char_xy          000A72 RLA    
+vdp_wait                  000AE8 RLA    vdp_xy_to_ptr             000A42 RLA    
+
+
+
+Exports list by value:
+----------------------
+ptr1                      000000 RLZ    ptr2                      000002 RLZ    
+__BSS_SIZE__              000400 REA    __STACKSIZE__             000800 REA    
+vdp_xy_to_ptr             000A42 RLA    vdp_char_xy               000A6C RLA    
+vdp_read_char_xy          000A72 RLA    vdp_g2_init               000A87 RLA    
+vdp_wait                  000AE8 RLA    vdp_flush                 000AF6 RLA    
+__BSS_LOAD__              001100 RLA    __STACKSTART__            00BEFF REA    
+
+
+
+Imports list:
+-------------
+__BSS_LOAD__ ([linker generated]):
+    [linker generated]        ./apps.cfg:37
+__BSS_SIZE__ ([linker generated]):
+    [linker generated]        ./apps.cfg:37
+__STACKSIZE__ ([linker generated]):
+    [linker generated]        ./apps.cfg:38
+    [linker generated]        ./apps.cfg:3
+__STACKSTART__ ([linker generated]):
+    [linker generated]        ./apps.cfg:38
+    [linker generated]        ./apps.cfg:3
+ptr1 (main.o):
+    vdp.o                     vdp.s:12
+ptr2 (main.o):
+    vdp.o                     vdp.s:12
+vdp_char_xy (vdp.o):
+    main.o                    main.s:455
+vdp_flush (vdp.o):
+    main.o                    main.s:455
+vdp_g2_init (vdp.o):
+    main.o                    main.s:455
+vdp_read_char_xy (vdp.o):
+    main.o                    main.s:455
+vdp_wait (vdp.o):
+    main.o                    main.s:455
+vdp_xy_to_ptr (vdp.o):
+    main.o                    main.s:455
+
