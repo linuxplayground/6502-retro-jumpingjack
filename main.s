@@ -3,7 +3,6 @@
 .include "app.inc"
 
 NUM_GAPS = 8
-DEBUG = 0
 
 .autoimport
 .globalzp ptr1, ptr2, tmp1
@@ -23,67 +22,111 @@ gap:    .byte 0
 
 start:
     jsr vdp_g2_init
-.if DEBUG
+
+    lda #<sprite_start
+    sta ptr1
+    lda #>sprite_start
+    sta ptr1+1
+    lda #<sprite_end
+    sta ptr2
+    lda #>sprite_end
+    sta ptr2+1
+    jsr load_sprite_patterns
+
+    lda #<font_start
+    sta ptr1
+    lda #>font_start
+    sta ptr1+1
+    lda #<font_end
+    sta ptr2
+    lda #>font_end
+    sta ptr2+1
+    jsr load_font_patterns
+
+    lda #(192-16)
+    sta sprite0 + sprite::yp
+    lda #128
+    sta sprite0 + sprite::xp
+    lda #4
+    sta sprite0 + sprite::pa
     lda #1
-    ldx #$11
+    sta sprite0 + sprite::co
+    jsr flush_sprite_attributes
+
+    jsr reset_data
+
+    stz frame
+    stz tmp1
+    stz tmp2
+    stz gap
+    stz line
+
+.if DEBUG=1
+    lda #1
+    ldx #$1e
     jsr vdp_color_char
 
     lda #2
-    ldx #$21
+    ldx #$2e
     jsr vdp_color_char
 
     lda #3
-    ldx #$31
+    ldx #$3e
     jsr vdp_color_char
 
     lda #4
-    ldx #$41
+    ldx #$4e
     jsr vdp_color_char
 
     lda #6
-    ldx #$51
+    ldx #$5e
     jsr vdp_color_char
 
     lda #7
-    ldx #$61
+    ldx #$6e
     jsr vdp_color_char
 
     lda #8
-    ldx #$71
+    ldx #$7e
     jsr vdp_color_char
 .endif
     jsr draw_lines
+
 game_loop:
     ; frame 1/4
     jsr draw_gaps
+    inc frame
+    jsr move_jack
     jsr vdp_wait
     jsr vdp_flush
-    inc frame
-.if DEBUG
+    jsr flush_sprite_attributes
+.if DEBUG=1
     jsr debug_pause
 .endif
     ; frame 2/4
     jsr draw_gaps
+    inc frame
+    jsr move_jack
     jsr vdp_wait
     jsr vdp_flush
-    inc frame
-.if DEBUG
+    jsr flush_sprite_attributes
+.if DEBUG=1
     jsr debug_pause
 .endif
     ; frame 3/4
     jsr draw_gaps
+    inc frame
+    jsr move_jack
     jsr vdp_wait
     jsr vdp_flush
-    inc frame
-.if DEBUG
+    jsr flush_sprite_attributes
+.if DEBUG=1
     jsr debug_pause
 .endif
     ; frame 4/4
     jsr draw_gaps
-    jsr vdp_wait
-    jsr vdp_flush
     inc frame
-.if DEBUG
+.if DEBUG=1
     jsr debug_pause
 .endif
 
@@ -95,14 +138,100 @@ game_loop:
     dec gaps_pos+5
     dec gaps_pos+6
     dec gaps_pos+7
+    jsr move_jack
+    jsr animate_jack
 
+    jsr vdp_wait
+    jsr vdp_flush
+    jsr flush_sprite_attributes
 
+; jack state before asking for user input.
+    lda jack_state
+    cmp #4
+    bne @get_key
+    jmp game_loop
+
+@get_key:
     jsr CONST
     cmp #$1b
     beq exit
+@key_stop:
+    cmp #'s'
+    bne @key_left
+    lda #1
+    sta jack_state
+    jmp game_loop
+@key_left:
+    cmp #'a'
+    bne @key_right
+    lda #3
+    sta jack_state
+    jmp game_loop
+@key_right:
+    cmp #'d'
+    bne @key_jump
+    lda #2
+    sta jack_state
+    jmp game_loop
+@key_jump:
+    cmp #' '
+    bne @no_key
+    lda #4
+    sta jack_state
+@no_key:
     jmp game_loop
 exit:
     jmp WBOOT
+
+
+animate_jack:
+    lda jack_state
+    dec
+    asl
+    asl
+    asl
+    asl
+    sta tmp1
+    lda jack_cur_frame
+    and #3
+    inc
+    asl
+    asl
+    clc
+    adc tmp1
+    sta sprite0 + sprite::pa
+    inc jack_cur_frame
+@exit:
+    rts
+
+move_jack:
+    lda jack_state
+    cmp #4      ; if jumping do nothing else
+    bne @move_right
+    lda jack_jump_frame
+    cmp #12
+    beq @jmp_complete
+    inc jack_jump_frame
+    dec sprite0 + sprite::yp
+    dec sprite0 + sprite::yp
+    rts
+@jmp_complete:
+    stz jack_jump_frame
+    lda #1
+    sta jack_state
+@move_right:
+    cmp #2
+    bne @move_left
+    inc sprite0 + sprite::xp
+    inc sprite0 + sprite::xp
+    rts
+@move_left:
+    cmp #3
+    bne @exit
+    dec sprite0 + sprite::xp
+    dec sprite0 + sprite::xp
+@exit:
+    rts
 
 debug_pause:
     ldx #1
@@ -184,7 +313,7 @@ gaps_F0:
     ldx gap
     lda gaps_pos,x
     dec
-    jsr get_gap_xy      ; GAP 0
+    jsr get_gap_xy      ; CELL 0
     lda #1
     jsr vdp_char_xy
 
@@ -192,7 +321,7 @@ gaps_F0:
     lda gaps_pos,x
     clc
     adc #3
-    jsr get_gap_xy      ; GAP 4
+    jsr get_gap_xy      ; CELL 4
     lda #1
     jsr vdp_char_xy
 
@@ -200,18 +329,18 @@ gaps_F0:
     ldx gap
     lda gaps_pos,x
     pha
-    jsr get_gap_xy      ; GAP 1
+    jsr get_gap_xy      ; CELL 1
     lda #5
     jsr vdp_char_xy
     pla
     inc
     pha
-    jsr get_gap_xy      ; GAP 2
+    jsr get_gap_xy      ; CELL 2
     lda #5
     jsr vdp_char_xy
     pla
     inc
-    jsr get_gap_xy      ; GAP 3
+    jsr get_gap_xy      ; CELL 3
     lda #5
     jsr vdp_char_xy
 
@@ -397,19 +526,52 @@ gap_and_update:
     jsr vdp_char_xy
     rts
 
+flush_sprite_attributes:
+    lda #<SPRITEATTRIBUTETABLE
+    ldx #>SPRITEATTRIBUTETABLE
+    jsr set_write_address
+
+    lda #<sprite0
+    sta ptr1
+    lda #>sprite0
+    sta ptr1+1
+    ldy #0
+@L1:
+    lda (ptr1),y
+    cmp #$D0
+    beq @EXIT
+    sta vdp_ram
+    iny
+    bpl @L1
+@EXIT:
+    rts
+
+reset_data:
+    ldx #10
+@L1:
+    lda gaps_start_pos,x
+    sta gaps_pos,x
+    dex
+    bpl @L1
+    rts
+
 
 .segment "DATA"
 
 gaps_pos:
     .byte $00   ; right down
-    .byte $22   ; right down
-    .byte $44   ; right down
-    .byte $66   ; right down
+    .byte $00   ; right down
+    .byte $00   ; right down
+    .byte $00   ; right down
 
-    .byte $88   ; left up
-    .byte $aa   ; left up
-    .byte $cc   ; left up
-    .byte $ee   ; left up
+    .byte $00   ; left up
+    .byte $00   ; left up
+    .byte $00   ; left up
+    .byte $00   ; left up
+
+jack_state:     .byte 1
+jack_cur_frame: .byte 0
+jack_jump_frame:.byte 0
 
 gap_frame_data:
     .byte 0     ; Cell 1 (Right-moving gaps)
@@ -417,7 +579,26 @@ gap_frame_data:
     .byte 0     ; Cell 4 (Right-moving gaps)
     .byte 0     ; Cell 0 (Left-moving gaps)
 
+
+sprite0: .tag sprite
+sprite1: .tag sprite
+sprite2: .tag sprite
+.byte $d0      ; end of sprites marker
+
 .rodata
+gaps_start_pos:
+    .byte $08   ; right down
+    .byte $28   ; right down
+    .byte $48   ; right down
+    .byte $68   ; right down
+
+    .byte $88   ; left up
+    .byte $a8   ; left up
+    .byte $c8   ; left up
+    .byte $e8   ; left up
+jack_start_state: .byte 0
+jack_start_current_frame: .byte 0
+jack_start_jump_frame: .byte 0
 
 gap_and_idx:
     .word 0
@@ -453,3 +634,10 @@ gap_nines:
 gap_tens:
     .byte 5,5,5,5,5,5,5,5
 
+font_start:
+.include "font.s"
+font_end:
+
+sprite_start:
+.include "sprites.s"
+sprite_end:

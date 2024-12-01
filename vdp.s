@@ -5,7 +5,8 @@
 
 .export vdp_g2_init, vdp_clear_screenbuf, vdp_wait, vdp_flush
 .export vdp_screenbuf, vdp_xy_to_ptr, vdp_print_xy, vdp_char_xy
-.export vdp_read_char_xy, vdp_color_char
+.export vdp_read_char_xy, vdp_color_char, set_write_address, set_read_address
+.export load_font_patterns, load_sprite_patterns
 
 .autoimport
 
@@ -75,8 +76,8 @@ vdp_g2_init:
     jsr init_regs
     lda #$6e
     jsr setup_colortable
-    jsr load_font
     jsr vdp_clear_screenbuf
+    jsr init_sprite_attributes
     rts
 
 clear_vram:
@@ -123,7 +124,7 @@ vdp_wait:
     cmp #$80
     bne vdp_wait
     stz VDP_SYNC
-.if 0
+.if DEBUG
     jsr CONIN
     cmp #$1b
     beq @exit
@@ -141,7 +142,7 @@ vdp_flush:
     lda #>vdp_screenbuf
     sta ptr1 + 1
     ldy #0
-    ldx #4
+    ldx #3
 :   lda (ptr1),y
     sta vdp_ram
     iny
@@ -203,14 +204,18 @@ set_write_address:
     sta vdp_reg
     rts
 
-load_font:
+set_read_address:
+    sta vdp_reg
+    stx vdp_reg
+    rts
+
+load_font_patterns:
     lda #<PATTERNTABLE
     ldx #>PATTERNTABLE
     jsr set_write_address
-    lda #<font_start
-    sta ptr1
-    lda #>font_start
-    sta ptr1+1
+    ; fall through
+    ; fall through
+copy_ptr1_to_ptr2:
     ldy #0
 :   lda (ptr1),y
     sta vdp_ram
@@ -221,24 +226,45 @@ load_font:
     lda #0
     adc ptr1+1
     sta ptr1+1
-    cmp #>font_end
+    cmp ptr2+1
     bne :-
     lda ptr1
-    cmp #<font_end
+    cmp ptr2
     bne :-
+    rts
+
+; INPUT: ptr1 ptr to start of sprite pattern data
+;        ptr2 ptr to end of sprite pattern data
+load_sprite_patterns:
+    lda #<SPRITEPATTERNTABLE
+    ldx #>SPRITEPATTERNTABLE
+    jsr set_write_address
+    jmp copy_ptr1_to_ptr2
+
+; Init all sprites to disabled.
+init_sprite_attributes:
+    lda #<SPRITEATTRIBUTETABLE
+    ldx #>SPRITEATTRIBUTETABLE
+    jsr set_write_address
+    ldx #32
+@L1:
+    lda #$D0
+    sta vdp_ram
+    stz vdp_ram
+    stz vdp_ram
+    stz vdp_ram
+    dex
+    bne @L1
     rts
 
 .rodata
 g2_regs:
     .byte $02
-    .byte $e0
+    .byte $e2
     .byte $0e
     .byte $9f
     .byte $00
     .byte $76
     .byte $03
     .byte $2b
-
-font_start:
-    .include "font.s"
-font_end:
+    

@@ -7,7 +7,8 @@ SERIAL_DEVICE=/dev/tty.usbserial-A5XK3RJT
 LOAD_TRIM = $(TOP)/loadtrim.py
 INCLUDES = -I $(TOP)
 
-ASFLAGS = $(INCLUDES) -g --feature labels_without_colons --cpu 65C02 --feature string_escapes
+DEBUG = 0
+ASFLAGS = $(INCLUDES) -g --feature labels_without_colons --cpu 65C02 --feature string_escapes -D DEBUG=$(DEBUG)
 CFG = $(TOP)/apps.cfg
 
 APPNAME = jj

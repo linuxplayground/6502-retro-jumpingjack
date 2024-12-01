@@ -205,8 +205,8 @@ GFXJStil:      ; Jack standing still GFX data
                db      00000011b
                db      00000100b
                db      00000101b
-    db      00001001b
-    db      00000010b
+               db      00001001b
+               db      00000010b
                db      00000010b
                db      00000100b
                db      00000110b

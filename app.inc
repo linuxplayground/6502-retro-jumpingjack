@@ -40,3 +40,10 @@ COLORTABLE              = $2000
 PATTERNTABLE            = $0000
 SPRITEATTRIBUTETABLE    = $3B00
 SPRITEPATTERNTABLE      = $1800
+
+.struct sprite
+    yp .byte
+    xp .byte
+    pa .byte
+    co .byte
+.endstruct
