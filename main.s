@@ -1,6 +1,7 @@
 ; vim: set ft=asm_ca65 ts=4 sw=4 et:
 .include "io.inc"
 .include "app.inc"
+.include "macro.inc"
 
 NUM_GAPS = 8
 
@@ -12,11 +13,13 @@ ptr1:   .word 0
 ptr2:   .word 0
 tmp1:   .byte 0
 tmp2:   .byte 0
+jprev:  .byte 0
 frame:  .byte 0
 
 .bss
 line:   .byte 0
 gap:    .byte 0
+jline:  .byte 0
 
 .code
 
@@ -61,48 +64,18 @@ start:
     stz gap
     stz line
 
-.if DEBUG=1
-    lda #1
-    ldx #$1e
-    jsr vdp_color_char
-
-    lda #2
-    ldx #$2e
-    jsr vdp_color_char
-
-    lda #3
-    ldx #$3e
-    jsr vdp_color_char
-
-    lda #4
-    ldx #$4e
-    jsr vdp_color_char
-
-    lda #6
-    ldx #$5e
-    jsr vdp_color_char
-
-    lda #7
-    ldx #$6e
-    jsr vdp_color_char
-
-    lda #8
-    ldx #$7e
-    jsr vdp_color_char
-.endif
     jsr draw_lines
 
 game_loop:
     ; frame 1/4
     jsr draw_gaps
-    inc frame
     jsr move_jack
+    inc frame
+
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
-.if DEBUG=1
-    jsr debug_pause
-.endif
+
     ; frame 2/4
     jsr draw_gaps
     inc frame
@@ -110,9 +83,7 @@ game_loop:
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
-.if DEBUG=1
-    jsr debug_pause
-.endif
+
     ; frame 3/4
     jsr draw_gaps
     inc frame
@@ -120,15 +91,10 @@ game_loop:
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
-.if DEBUG=1
-    jsr debug_pause
-.endif
+
     ; frame 4/4
     jsr draw_gaps
     inc frame
-.if DEBUG=1
-    jsr debug_pause
-.endif
 
     inc gaps_pos+0
     inc gaps_pos+1
@@ -138,6 +104,7 @@ game_loop:
     dec gaps_pos+5
     dec gaps_pos+6
     dec gaps_pos+7
+
     jsr move_jack
     jsr animate_jack
 
@@ -176,13 +143,44 @@ game_loop:
 @key_jump:
     cmp #' '
     bne @no_key
-    lda #4
+    ldy jline
+    dey
+    bmi @no_key
+    lda sprite0 + sprite::xp
+    lsr
+    lsr
+    lsr
+    tax
+    jsr get_xy_gap  ; above jack
+    sta jprev
+    jsr test_gap
+    bcs :+
+    lda jprev
+    dec             ; one to the left
+    jsr test_gap
+    bcs :+
+    lda #6
+    sta jack_state
+    jmp game_loop
+:   lda #4
     sta jack_state
 @no_key:
     jmp game_loop
 exit:
     jmp WBOOT
 
+test_gap:
+    ldx #7
+@L0:
+    cmp gaps_pos,x
+    beq @match
+    dex
+    bpl @L0
+    clc
+    rts
+@match:
+    sec
+    rts
 
 animate_jack:
     lda jack_state
@@ -205,32 +203,43 @@ animate_jack:
     rts
 
 move_jack:
+    ; check the state that jack is in and jump to a routine
+    ; to manage that state
     lda jack_state
-    cmp #4      ; if jumping do nothing else
-    bne @move_right
+    cmp #1
+    bne :+
+    rts
+:   cmp #2
+    bne :+
+    jmp do_move_right
+:   cmp #3
+    bne :+
+    jmp do_move_left
+:   cmp #4
+    bne :+
     lda jack_jump_frame
     cmp #12
-    beq @jmp_complete
-    inc jack_jump_frame
-    dec sprite0 + sprite::yp
-    dec sprite0 + sprite::yp
-    rts
-@jmp_complete:
+    bne @do_move_up
     stz jack_jump_frame
     lda #1
     sta jack_state
-@move_right:
-    cmp #2
-    bne @move_left
+    dec jline
+:   rts
+@do_move_up:
+    jmp do_move_up
+
+do_move_right:
     inc sprite0 + sprite::xp
     inc sprite0 + sprite::xp
     rts
-@move_left:
-    cmp #3
-    bne @exit
+do_move_left:
     dec sprite0 + sprite::xp
     dec sprite0 + sprite::xp
-@exit:
+    rts
+do_move_up:
+    dec sprite0 + sprite::yp
+    dec sprite0 + sprite::yp
+    inc jack_jump_frame
     rts
 
 debug_pause:
@@ -267,20 +276,35 @@ draw_line:
     bpl :-
     rts
 
+; Convert XY to gap location so it can be compared with all gaps
+; INPUT X, Y location of sprite
+; RETURN A = LLLXXXXX location of tile.
+get_xy_gap:
+    tya     ; y is a char position 0-23
+    asl     ; < 1
+    asl     ; < 2
+    asl     ; < 3
+    asl     ; < 4
+    asl     ; shift into LLL position
+    sta tmp1
+    txa     ; x is char position 0-31
+    ora tmp1
+    rts
+
 get_gap_xy:
     pha
     lsr
     lsr
     lsr
     lsr
-    lsr
+    lsr     ; A >> 5
     sta tmp1
-    asl
+    asl     ; x 2
     clc
-    adc tmp1
+    adc tmp1 ; + 1 (Line number x 3)
     tay
     pla
-    and #$1F
+    and #$1F ; X is okay as is.
     tax
     rts
 
@@ -553,6 +577,8 @@ reset_data:
     sta gaps_pos,x
     dex
     bpl @L1
+    lda #8
+    sta jline
     rts
 
 
