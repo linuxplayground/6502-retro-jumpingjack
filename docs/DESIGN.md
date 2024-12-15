@@ -72,18 +72,19 @@ hole.  This pattern repeats until the hole dissappears off the left side of the
 screen.  When that happens, the hole begins to form on the right side of the
 screen.
 
-There are 7 floors. For 3 of the floors, the gaps move from left to right and
-down the screen.  When a gap reaches the end of a line, it simply shows up at
-the beginning of the next line.  This happens because of the way video ram is
-arranged.
+There are 8 floors. Four of the gaps move from left to right and down the
+screen.  The other 4 gaps move from right to left and up the screen. When a gap
+reaches the end of a line, it simply shows up at the beginning of the next line.
+This happens because of the way video ram is arranged.
 
 For the gaps that move from right to left, when they reach the front of a line,
 they move up to the end of the line above.  Again because of the way video ram
 is arranged.
 
-When a gap reaches the end of the screen, either the front of the top line or
-the end of the bottom line, a new gap is inserted of the same type at the
-starting position.
+At the beginning of the game, the four gaps moving in a particular direction are
+overalaid on top of each other.  When Jack completes a successful jump one of
+the gaps is relocated which gives the appearance of a new gap being inserted
+into the game.
 
 Gaps can cross over each other.
 
@@ -106,3 +107,31 @@ animation.
 The gap is moved to the left by one tile width at the beginning of frame F0.
 The intermediate frames dot not move, only the first and last cells are updated
 to give the appearence of moving.
+
+## JACK STATE
+
+Jack has various states that define his animation and actions within the game.
+These are:
+
+1. Idle
+2. Running right
+3. Running left
+4. Jumping
+5. Falling
+6. Stunned (landed on floor below)
+7. Crashing (hit head)
+
+When Jack is running, he wraps around to the other side of the screen if he
+leaves the edge of the screen.
+
+Jumping is a 3 phase affair.
+
+1. Jump animation for 4 frames, move jack up 8 pixels.
+2. Good Jump
+    2.1. Repeat jump animation for 4 frames, move jack up 8 pixels.
+    2.2. Repeat jump animation for 4 frames, move jack up 8 pixels.
+    2.3. Set jack to idle state.
+3. Bad Jump
+    3.1. Repeat jump animation for 4 frames, move jack up 8 pixels.
+    3.2. switch to crash animation for 4 frames., Jack doesn't move.
+    3.3. switch to fall animation for 4 frames. move jack down 8 pixels.
