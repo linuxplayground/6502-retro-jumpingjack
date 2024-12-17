@@ -9,11 +9,8 @@ NUM_GAPS = 8
     IDLE        = 1 ;standing still
     RIGHT       = 2 ;running right
     LEFT        = 3 ;running left
-    JUMP        = 4 ;good jump
-    JUMPCRASH   = 5 ;jump bad   applies to phase 2 of jump
-    JUMPFALL    = 7 ;jump bad   applies to phase 3 of jump
-    FALL        = 8
-    STUNNED     = 9
+    JUMPING     = 4 ;jumping - good or bad
+    FALLING     = 5 ;falling
 .endenum
 
 .enum JACK_ANIM
@@ -57,8 +54,6 @@ jack_anim:       .byte 0
 jack_cur_frame:  .byte 0
 jack_jump_frame: .byte 0
 jack_jump_state: .byte 0
-jack_jumping:    .byte 0
-jack_falling:    .byte 0
 
 gap_frame_data:
     .byte 0     ; Cell 1 (Right-moving gaps)
@@ -106,13 +101,8 @@ start:
 
     jsr reset_data
 
-    stz frame
-    stz tmp1
-    stz tmp2
-    stz gap
-    stz line
-
     jsr draw_lines
+
 seed_loop:
     inc seed
     jsr CONST
@@ -129,9 +119,6 @@ seed_loop:
     sta gaps_pos+5
     sta gaps_pos+6
     sta gaps_pos+7
-
-    lda #2
-    sta gap_count
 
 game_loop:
     ; frame 1/4
@@ -179,28 +166,25 @@ game_loop:
     jsr vdp_flush
     jsr flush_sprite_attributes
 
-    lda jack_jumping
-    beq :+
-    jmp game_loop
-:   cmp jack_falling
-    beq :+
-    jmp game_loop
-:   jsr test_fall
 ; jack state before asking for user input.
+    lda jack_state
+    cmp #JACK_STATE::JUMPING
+    bne :+
+    jmp game_loop
+:   cmp #JACK_STATE::FALLING
+    bne :+
+    jmp game_loop
 
+:   jsr test_fall
+    beq @get_key
+    jmp game_loop
 @get_key:
+; keyboard input
     jsr CONST
     sta tmp1
     cmp #$1b
-    bne @check_state
+    bne @key_stop
     jmp exit
-@check_state:
-    lda jack_jumping
-    beq :+
-    jmp game_loop
-:   lda jack_falling
-    beq @key_stop
-    jmp game_loop
 @key_stop:
     lda tmp1
     cmp #'s'
@@ -252,14 +236,12 @@ game_loop:
     ;GOOD JUMP
 :   stz jack_jump_state
 
-:   lda JACK_STATE::JUMP
-    sta jack_state
-    lda #JACK_ANIM::JUMP
+:   lda #JACK_ANIM::JUMP
     sta jack_anim
     lda #$ff
     sta jack_jump_frame
-    lda #1
-    sta jack_jumping
+    lda #JACK_STATE::JUMPING
+    sta jack_state
     stz jack_cur_frame
 @no_key:
     jmp game_loop
@@ -285,19 +267,16 @@ test_fall:
     jsr test_gap
     bcs :+
     ; not falling
-    stz jack_falling
     lda #0
     rts
     ; falling
 :
-    lda JACK_STATE::FALL
-    sta jack_state
     lda #JACK_ANIM::FALL
     sta jack_anim
     lda #$ff
     sta jack_jump_frame
-    lda #1
-    sta jack_falling
+    lda #JACK_STATE::FALLING
+    sta jack_state
     stz jack_cur_frame
     rts
 
@@ -338,11 +317,14 @@ move_jack:
     ; if jack is idle, do nothing.
     ; if jack is RIGHT, move right
     ; if jack is LEFT, move left
-    lda jack_falling
-    beq :+
-    jmp check_fall
-:   lda jack_state
-    cmp #JACK_STATE::IDLE
+    lda jack_state
+    cmp #JACK_STATE::FALLING
+    bne:+
+    jmp do_fall
+:   cmp #JACK_STATE::JUMPING
+    bne :+
+    jmp do_jump
+:   cmp #JACK_STATE::IDLE
     bne check_left
     rts
 check_left:
@@ -353,30 +335,25 @@ check_left:
     rts
 check_right:
     cmp #JACK_STATE::RIGHT
-    bne check_jumping
+    bne :+
     inc sprite0 + sprite::xp
     inc sprite0 + sprite::xp
-    rts
-check_jumping:
-    lda jack_jumping
-    beq check_fall
-    jmp do_jump
-check_fall:
+:   rts
+
+do_fall:
     inc jack_jump_frame
     lda jack_jump_frame
     cmp #12
-    bne :++
+    bne :+
     lda jline
     cmp #8
-    bcs :+
+    bcs :++
     inc jline
-:   stz jack_falling
     lda jline
-    jsr CONBYTE
     jmp reset_jump
 :   inc sprite0+sprite::yp
     inc sprite0+sprite::yp
-    rts
+:   rts
 
 do_jump:
     inc jack_jump_frame
@@ -392,7 +369,7 @@ do_jump:
     bne :+
     lda jack_jump_state
     beq :+
-    lda #JACK_ANIM::CRASH
+    lda #JACK_ANIM::STUN
     sta jack_anim
     rts
 :   lda jack_jump_frame
@@ -429,21 +406,20 @@ do_jump:
 
 reset_jump:
     lda jline
-    pha
-    jsr CONBYTE
-    pla
     beq win
-
-    stz jack_jump_frame
+    lda jack_state
+    cmp #JACK_STATE::JUMPING    ; only add gaps when jumping
+    bne :+
+    lda jack_jump_state         ; only add gaps when jump was good
+    bne :+
+    jsr do_new_gap
+:   stz jack_jump_frame
     lda #JACK_STATE::IDLE
     sta jack_state
     lda #JACK_ANIM::IDLE
     sta jack_anim
-    stz jack_jumping
-    lda jack_jump_state
-    bne :+
-    jsr do_new_gap
-:   rts
+    rts
+
 win:
     lda #<WINNER
     ldx #>WINNER
@@ -793,17 +769,20 @@ flush_sprite_attributes:
     rts
 
 reset_data:
-    ldx #11
-@L1:
-    lda gaps_start_pos,x
-    sta gaps_pos,x
-    dex
-    bpl @L1
     lda #8
     sta jline
     stz jack_jump_frame
-    stz jack_jumping
-    stz jack_falling
+    lda #JACK_STATE::IDLE
+    sta jack_state
+    lda #JACK_ANIM::IDLE
+    sta jack_anim
+    stz frame
+    stz tmp1
+    stz tmp2
+    stz gap
+    stz line
+    lda #1
+    sta gap_count
     rts
 
 rnd:
@@ -818,6 +797,9 @@ noEor:
     sta seed
     rts
 
+sound:
+    rts
+
 .segment "DATA"
 
 sprite0: .tag sprite
@@ -825,20 +807,6 @@ sprite0: .tag sprite
 
 
 .rodata
-gaps_start_pos:
-    .byte $68   ; right down
-    .byte $68   ; right down
-    .byte $68   ; right down
-    .byte $68   ; right down
-
-    .byte $68   ; left up
-    .byte $68   ; left up
-    .byte $68   ; left up
-    .byte $68   ; left up
-jack_start_state: .byte 1
-jack_start_anim: .byte 1
-jack_start_current_frame: .byte 0
-jack_start_jump_frame: .byte $ff
 
 gap_and_idx:
     .word 0

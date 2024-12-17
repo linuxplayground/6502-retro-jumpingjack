@@ -16,7 +16,8 @@ LOAD_ADDR = 800
 
 BUILD_DIR = build
 SOURCES = main.s \
-	  vdp.s
+	  vdp.s \
+	  sn76489.s
 
 OBJS = $(addprefix $(BUILD_DIR)/, $(SOURCES:.s=.o))
 all: clean $(BUILD_DIR)/$(APPNAME).com
