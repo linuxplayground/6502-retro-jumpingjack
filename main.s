@@ -339,9 +339,26 @@ animate_jack_jump_good_3:
     dec jline
     lda jline
     beq win
+    jmp new_gap
 :   rts
 win:
     jmp WBOOT
+
+new_gap:
+    lda gap_count
+    cmp #8
+    beq :+
+    inc gap_count
+    ldy gap_count
+    lda #<gaps_pos
+    sta ptr1
+    lda #>gaps_pos
+    sta ptr1+1
+    jsr rnd
+    sta (ptr1),y
+:
+    rts
+
 animate_jack_falling:
     lda #68
     sta jsprite + sprite::pa
