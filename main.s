@@ -151,7 +151,7 @@ game_loop:
 
     jsr test_fall
     bcc @key
-:   lda #jstate::falling
+    lda #jstate::falling
     sta jstate
     stz j_j_fr
     jmp game_loop
@@ -168,7 +168,7 @@ game_loop:
 :   lda tmp1
     cmp #'c'
     bne :+
-    lda #jstate::crash
+    lda #jstate::jump_1
     sta jstate
     bra @next
 :   cmp #'f'
@@ -200,9 +200,36 @@ game_loop:
     bra @next
 :   cmp #' '
     bne @next
+    jmp do_jump
+@next:
+    jmp game_loop
+
+do_jump:
+    ldy jline
+    dey
+    bmi @exit
+    lda jsprite + sprite::xp
+    lsr
+    lsr
+    lsr
+    tax
+    jsr get_xy_gap  ; above jack
+    sta jprev
+    jsr test_gap
+    bcs @crash
+    lda jprev
+    dec             ; one to the left
+    jsr test_gap
+    bcc @crash
     lda #jstate::jump_1
     sta jstate
-@next:
+    stz j_j_fr
+    jmp game_loop
+@crash:
+    lda #jstate::crash
+    sta jstate
+    stz j_j_fr
+@exit:
     jmp game_loop
 
 animate_jack:
@@ -322,11 +349,13 @@ animate_jack_falling:
     lda j_j_fr
     cmp #12
     bne :+
-    lda #jstate::still
+    lda #jstate::stun
     sta jstate
     stz j_j_fr
-    lda #4
+    lda #84
     sta jsprite + sprite::pa
+    lda #8
+    sta stun_ctr
     lda jline
     cmp #8
     bcs :+
