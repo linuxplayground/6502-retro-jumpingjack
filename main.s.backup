@@ -5,9 +5,23 @@
 
 NUM_GAPS = 8
 
-JSFRONT=8
-JSLEFT = 4
-JSRIGHT = 12
+.enum JACK_STATE
+    IDLE        = 1 ;standing still
+    RIGHT       = 2 ;running right
+    LEFT        = 3 ;running left
+    JUMPING     = 4 ;jumping - good or bad
+    FALLING     = 5 ;falling
+.endenum
+
+.enum JACK_ANIM
+    IDLE    = 1
+    RIGHT   = 2
+    LEFT    = 3
+    JUMP    = 4
+    FALL    = 5
+    STUN    = 6
+    CRASH   = 7
+.endenum
 
 .autoimport
 .globalzp ptr1, ptr2, tmp1
@@ -17,10 +31,13 @@ ptr1:   .word 0
 ptr2:   .word 0
 tmp1:   .byte 0
 tmp2:   .byte 0
+jprev:  .byte 0
 frame:  .byte 0
 
 .bss
-
+line:   .byte 0
+gap:    .byte 0
+jline:  .byte 0
 gaps_pos:
     .byte $00   ; right down
     .byte $00   ; right down
@@ -31,6 +48,12 @@ gaps_pos:
     .byte $00   ; left up
     .byte $00   ; left up
     .byte $00   ; left up
+
+jack_state:      .byte 0
+jack_anim:       .byte 0
+jack_cur_frame:  .byte 0
+jack_jump_frame: .byte 0
+jack_jump_state: .byte 0
 
 gap_frame_data:
     .byte 0     ; Cell 1 (Right-moving gaps)
@@ -67,13 +90,13 @@ start:
     jsr load_font_patterns
 
     lda #(192-16)
-    sta jsprite + sprite::yp
+    sta sprite0 + sprite::yp
     lda #128
-    sta jsprite + sprite::xp
+    sta sprite0 + sprite::xp
     lda #4
-    sta jsprite + sprite::pa
+    sta sprite0 + sprite::pa
     lda #1
-    sta jsprite + sprite::co
+    sta sprite0 + sprite::co
     jsr flush_sprite_attributes
 
     jsr reset_data
@@ -102,7 +125,6 @@ game_loop:
     jsr draw_gaps
     jsr move_jack
     inc frame
-    jsr animate_jack
 
     jsr vdp_wait
     jsr vdp_flush
@@ -110,36 +132,24 @@ game_loop:
 
     ; frame 2/4
     jsr draw_gaps
-    jsr move_jack
     inc frame
-    jsr animate_jack
-
+    jsr move_jack
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
 
     ; frame 3/4
     jsr draw_gaps
-    jsr move_jack
     inc frame
-    jsr animate_jack
-
+    jsr move_jack
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
 
     ; frame 4/4
     jsr draw_gaps
-    jsr move_jack
     inc frame
-    jsr animate_jack
 
-    jsr vdp_wait
-    jsr vdp_flush
-    jsr flush_sprite_attributes
-
-    ; move gaps and player
-    ; move gaps
     inc gaps_pos+0
     inc gaps_pos+1
     inc gaps_pos+2
@@ -149,328 +159,101 @@ game_loop:
     dec gaps_pos+6
     dec gaps_pos+7
 
-    jsr test_fall
-    bcc @key
-:   lda #jstate::falling
-    sta jstate
-    stz j_j_fr
+    jsr move_jack
+    jsr animate_jack
+
+    jsr vdp_wait
+    jsr vdp_flush
+    jsr flush_sprite_attributes
+
+; jack state before asking for user input.
+    lda jack_state
+    cmp #JACK_STATE::JUMPING
+    bne :+
     jmp game_loop
-@key:
+:   cmp #JACK_STATE::FALLING
+    bne :+
+    jmp game_loop
+
+:   jsr test_fall
+    beq @get_key
+    jmp game_loop
+@get_key:
+; keyboard input
     jsr CONST
     sta tmp1
     cmp #$1b
-    bne :+
-    jmp WBOOT
-:   lda jstate
-    cmp #jstate::jump_1
-    bcc :+
+    bne @key_stop
+    jmp exit
+@key_stop:
+    lda tmp1
+    cmp #'s'
+    bne @key_left
+    lda #JACK_STATE::IDLE
+    sta jack_state
+    lda #JACK_ANIM::IDLE
+    sta jack_anim
     jmp game_loop
-:   lda tmp1
-    cmp #'c'
-    bne :+
-    lda #jstate::crash
-    sta jstate
-    bra @next
-:   cmp #'f'
-    bne :+
-    lda jline
-    cmp #8
-    beq @next
-    stz j_j_fr
-    lda #jstate::falling
-    sta jstate
-    bra @next
-:   cmp #'a'
-    bne :+
-    lda #jstate::left
-    sta jstate
-    bra @next
-:   cmp #'s'
-    bne :+
-    lda #jstate::still
-    sta jstate
-    lda #4
-    sta jsprite + sprite::pa    ; switch to still imediately
-    stz frame                   ; also reset frame
-    bra @next
-:   cmp #'d'
-    bne :+
-    lda #jstate::right
-    sta jstate
-    bra @next
-:   cmp #' '
-    bne @next
-    lda #jstate::jump_1
-    sta jstate
-@next:
+@key_left:
+    cmp #'a'
+    bne @key_right
+    lda #JACK_STATE::LEFT
+    sta jack_state
+    lda #JACK_ANIM::LEFT
+    sta jack_anim
     jmp game_loop
-
-animate_jack:
-    lda jstate
-    asl         ; multiply by 4
-    asl
-    sta animate_frame_jump + 1 ; self modifying code
-animate_frame_jump:
-    bra animate_frame_jump
-    jmp animate_jack_still
-    nop
-    jmp animate_jack_left
-    nop
-    jmp animate_jack_right
-    nop
-    jmp animate_jack_jump_good_1
-    nop
-    jmp animate_jack_jump_good_2
-    nop
-    jmp animate_jack_jump_good_3
-    nop
-    jmp animate_jack_falling
-    nop
-    jmp animate_jack_crash
-    nop
-    jmp animate_jack_crash_fall
-    nop
-    jmp animate_jack_stun
-; only animate jack when he is standing still every 16 frames.
-animate_jack_still:
-    stz j_j_fr
-    lda frame
-    cmp #$10
-    bne :+
-    lda j_s_fr
-    inc
-    asl
-    asl
-    sta jsprite + sprite::pa
-    inc j_s_fr
-    lda j_s_fr
-    and #$03
-    sta j_s_fr
-    stz frame
-:   rts
-animate_jack_left:
-    lda frame
-    and #1
-    bne :+
-    lda j_r_fr
-    and #3
-    asl
-    asl
-    clc
-    adc #36
-    sta jsprite + sprite::pa
-    inc j_r_fr
-:   rts
-animate_jack_right:
-    lda frame
-    and #1
-    bne :+
-    lda j_r_fr
-    and #3
-    asl
-    asl
-    clc
-    adc #20
-    sta jsprite + sprite::pa
-    inc j_r_fr
-:   rts
-animate_jack_jump_good_1:
-    lda j_j_fr
-    and #3
-    asl
-    asl
-    clc
-    adc #52
-    sta jsprite + sprite::pa
-    inc j_j_fr
-    lda j_j_fr
-    cmp #4
-    bne :+
-    lda #jstate::jump_2
-    sta jstate
-    stz j_j_fr
-:   rts
-animate_jack_jump_good_2:
-    inc j_j_fr
-    lda j_j_fr
-    cmp #4
-    bne :+
-    lda #jstate::jump_3
-    sta jstate
-    stz j_j_fr
-:   rts
-animate_jack_jump_good_3:
-    inc j_j_fr
-    lda j_j_fr
-    cmp #4
-    bne :+
-    lda #jstate::still
-    sta jstate
-    lda #4
-    sta jsprite + sprite::pa    ; switch to still imediately
-    stz frame
-    dec jline
-    lda jline
-    beq win
-:   rts
-win:
-    jmp WBOOT
-animate_jack_falling:
-    lda #68
-    sta jsprite + sprite::pa
-    inc j_j_fr
-    lda j_j_fr
-    cmp #12
-    bne :+
-    lda #jstate::still
-    sta jstate
-    stz j_j_fr
-    lda #4
-    sta jsprite + sprite::pa
-    lda jline
-    cmp #8
+@key_right:
+    cmp #'d'
+    bne @key_jump
+    lda #JACK_STATE::RIGHT
+    sta jack_state
+    lda #JACK_ANIM::RIGHT
+    sta jack_anim
+    jmp game_loop
+@key_jump:
+    cmp #' '
+    bne @no_key
+    ldy jline
+    dey
+    bmi @no_key
+    lda sprite0 + sprite::xp
+    lsr
+    lsr
+    lsr
+    tax
+    jsr get_xy_gap  ; above jack
+    sta jprev
+    jsr test_gap
     bcs :+
-    inc jline
-:   rts
-animate_jack_crash:
-    lda frame
-    and #1
-    bne :+
-    lda j_j_fr
-    and #3
-    asl
-    asl
-    clc
-    adc #100
-    sta jsprite + sprite::pa
-    inc j_j_fr
-    lda j_j_fr
-    cmp #4
-    bne :+
-    lda #jstate::crash_fall
-    sta jstate
-    lda #84
-    sta jsprite + sprite::pa
-    stz frame
-    stz j_j_fr
-:   rts
-animate_jack_crash_fall:
-    lda frame
-    and #1
-    bne :+
-    lda j_j_fr
-    and #3
-    asl
-    asl
-    clc
-    adc #84
-    sta jsprite + sprite::pa
-    inc j_j_fr
-    lda j_j_fr
-    cmp #4
-    bne :+
-    lda #jstate::stun
-    sta jstate
-    lda #84
-    sta jsprite + sprite::pa
-    stz frame
-    lda #16
-    sta stun_ctr
-:   rts
-animate_jack_stun:
-    lda frame
-    and #1
-    bne :+
-    lda stun_ctr
-    and #3
-    asl
-    asl
-    clc
-    adc #84
-    sta jsprite + sprite::pa
-    dec stun_ctr
-    lda stun_ctr
-    bne :+
-    lda #jstate::still
-    sta jstate
-    lda #4
-    sta jsprite + sprite::pa    ; switch to still imediately
-    stz frame
-:   rts
+    lda jprev
+    dec             ; one to the left
+    jsr test_gap
+    bcs :+
+    ; BAD JUMP
+    lda #1
+    sta jack_jump_state
+    bra :++
+    ;GOOD JUMP
+:   stz jack_jump_state
 
-move_jack:
-    lda jstate
-    asl         ; multiply by 4
-    asl
-    bne :+      ; we don't move if state is 0 = still
-    rts
-:   sta move_jack_jump + 1 ; self modifying code
-move_jack_jump:
-    bra move_jack_jump
-    nop 
-    nop         ; do nothing for still
-    nop
-    nop
-    jmp move_jack_left
-    nop
-    jmp move_jack_right
-    nop
-    jmp move_jack_jump_good_123
-    nop
-    jmp move_jack_jump_good_123
-    nop
-    jmp move_jack_jump_good_123
-    nop
-    jmp move_jack_falling
-    nop
-    jmp move_jack_crash
-    nop
-    jmp move_jack_crash_fall
-    nop
-    jmp move_jack_stun
-    nop
-
-move_jack_left:
-    dec jsprite + sprite::xp
-    dec jsprite + sprite::xp
-    rts
-move_jack_right:
-    inc jsprite + sprite::xp
-    inc jsprite + sprite::xp
-    rts
-move_jack_jump_good_123:
-    dec jsprite + sprite::yp
-    dec jsprite + sprite::yp
-    rts
-move_jack_falling:
-    inc jsprite + sprite::yp
-    inc jsprite + sprite::yp
-    rts
-move_jack_crash:
-    dec jsprite + sprite::yp
-    dec jsprite + sprite::yp
-    rts
-move_jack_crash_fall:
-    inc jsprite + sprite::yp
-    inc jsprite + sprite::yp
-    rts
-move_jack_stun:
-    rts
+:   lda #JACK_ANIM::JUMP
+    sta jack_anim
+    lda #$ff
+    sta jack_jump_frame
+    lda #JACK_STATE::JUMPING
+    sta jack_state
+    stz jack_cur_frame
+@no_key:
+    jmp game_loop
+exit:
+    jmp WBOOT
 
 test_fall:
-    lda jstate
-    cmp #jstate::stun
-    beq :+
-    cmp #jstate::jump_1
-    bcc :+
-    clc
-    rts
-:   ldy jline
+    ldy jline
     cpy #8
     bne :+
-    clc
     rts
-:   lda jsprite + sprite::xp
+:   lda sprite0 + sprite::xp
     lsr
     lsr
     lsr
@@ -482,7 +265,20 @@ test_fall:
     lda jprev
     dec             ; one to the left
     jsr test_gap
-:   rts             ; CARRY SET then falling, CARRY CLEAR then not falling
+    bcs :+
+    ; not falling
+    lda #0
+    rts
+    ; falling
+:
+    lda #JACK_ANIM::FALL
+    sta jack_anim
+    lda #$ff
+    sta jack_jump_frame
+    lda #JACK_STATE::FALLING
+    sta jack_state
+    stz jack_cur_frame
+    rts
 
 test_gap:
     ldx #7
@@ -497,43 +293,147 @@ test_gap:
     sec
     rts
 
-; Convert XY to gap location so it can be compared with all gaps
-; INPUT X, Y location of sprite
-; RETURN A = LLLXXXXX location of tile.
-get_xy_gap:
-    tya     ; y is a char position 0-23
-    asl     ; < 1
-    asl     ; < 2
-    asl     ; < 3
-    asl     ; < 4
-    asl     ; shift into LLL position
+animate_jack:
+    lda jack_anim
+    dec
+    asl
+    asl
+    asl
+    asl
     sta tmp1
-    txa     ; x is char position 0-31
-    ora tmp1
-    rts
-
-; Converts GAP to XY coordinates
-; INPUT: A = Gap in LLLXXXXX system
-; OUTPUT: X, Y
-get_gap_xy:
-    pha
-    lsr
-    lsr
-    lsr
-    lsr
-    lsr     ; A >> 5
-    sta tmp1
-    asl     ; x 2
+    lda jack_cur_frame
+    and #3
+    inc
+    asl
+    asl
     clc
-    adc tmp1 ; + 1 (Line number x 3)
-    tay
-    pla
-    and #$1F ; X is okay as is.
-    tax
+    adc tmp1
+    sta sprite0 + sprite::pa
+    inc jack_cur_frame
+@exit:
     rts
 
+move_jack:
+    ; if jack is idle, do nothing.
+    ; if jack is RIGHT, move right
+    ; if jack is LEFT, move left
+    lda jack_state
+    cmp #JACK_STATE::FALLING
+    bne:+
+    jmp do_fall
+:   cmp #JACK_STATE::JUMPING
+    bne :+
+    jmp do_jump
+:   cmp #JACK_STATE::IDLE
+    bne check_left
+    rts
+check_left:
+    cmp #JACK_STATE::LEFT
+    bne check_right
+    dec sprite0 + sprite::xp
+    dec sprite0 + sprite::xp
+    rts
+check_right:
+    cmp #JACK_STATE::RIGHT
+    bne :+
+    inc sprite0 + sprite::xp
+    inc sprite0 + sprite::xp
+:   rts
 
+do_fall:
+    inc jack_jump_frame
+    lda jack_jump_frame
+    cmp #12
+    bne :+
+    lda jline
+    cmp #8
+    bcs :++
+    inc jline
+    lda jline
+    jmp reset_jump
+:   inc sprite0+sprite::yp
+    inc sprite0+sprite::yp
+:   rts
 
+do_jump:
+    inc jack_jump_frame
+    lda jack_jump_frame
+    cmp #4
+    bcs @phase2    ; frame is = 4
+    dec sprite0 + sprite::yp
+    dec sprite0 + sprite::yp
+    rts
+@phase2:
+    lda jack_anim
+    jsr CONBYTE
+    lda jack_jump_frame
+    cmp #4
+    bne :+
+    lda jack_jump_state
+    beq :+
+    lda #JACK_ANIM::CRASH
+    sta jack_anim
+    rts
+:   lda jack_jump_frame
+    cmp #7
+    bcs @phase3     ; frame is >= 7
+    lda jack_jump_state
+    bne :+
+    dec sprite0 + sprite::yp    ; good jump - keep going up
+    dec sprite0 + sprite::yp
+:   rts
+@phase3:
+    lda jack_jump_frame
+    cmp #7
+    bne :+
+    lda jack_jump_state
+    beq :+
+    lda #JACK_ANIM::STUN
+    sta jack_anim
+    rts
+:   cmp #12
+    bne :++
+    lda jack_jump_state
+    bne :+
+    dec jline
+:   jmp reset_jump      ; frame is 12
+:   lda jack_jump_state
+    bne :+
+    dec sprite0 + sprite::yp    ; good jump - keep going up
+    dec sprite0 + sprite::yp
+    rts
+:   inc sprite0 + sprite::yp    ; bad jump - fall back down
+    inc sprite0 + sprite::yp
+    rts
+
+reset_jump:
+    lda jline
+    beq win
+    lda jack_state
+    cmp #JACK_STATE::JUMPING    ; only add gaps when jumping
+    bne :+
+    lda jack_jump_state         ; only add gaps when jump was good
+    bne :+
+    jsr do_new_gap
+:   stz jack_jump_frame
+    lda #JACK_STATE::IDLE
+    sta jack_state
+    lda #JACK_ANIM::IDLE
+    sta jack_anim
+    rts
+
+win:
+    lda #<WINNER
+    ldx #>WINNER
+    jsr CONPUTS
+    jmp exit
+
+debug_pause:
+    ldx #1
+:   jsr vdp_wait
+    dex
+    bne :-
+    rts
 
 draw_lines:
     ldy #0
@@ -562,6 +462,37 @@ draw_line:
     bpl :-
     rts
 
+; Convert XY to gap location so it can be compared with all gaps
+; INPUT X, Y location of sprite
+; RETURN A = LLLXXXXX location of tile.
+get_xy_gap:
+    tya     ; y is a char position 0-23
+    asl     ; < 1
+    asl     ; < 2
+    asl     ; < 3
+    asl     ; < 4
+    asl     ; shift into LLL position
+    sta tmp1
+    txa     ; x is char position 0-31
+    ora tmp1
+    rts
+
+get_gap_xy:
+    pha
+    lsr
+    lsr
+    lsr
+    lsr
+    lsr     ; A >> 5
+    sta tmp1
+    asl     ; x 2
+    clc
+    adc tmp1 ; + 1 (Line number x 3)
+    tay
+    pla
+    and #$1F ; X is okay as is.
+    tax
+    rts
 
 do_new_gap:
     lda gap_count
@@ -577,7 +508,6 @@ do_new_gap:
     sta (ptr1),y
 :
     rts
-
 draw_gaps:
     lda frame
     and #3
@@ -596,6 +526,10 @@ gaps_frame_jump:
     jmp gaps_F3      ; +12 (Frame 3)
 
 gaps_F0:
+.if DEBUG
+    lda #'0'
+    jsr CONOUT
+.endif
     lda #(NUM_GAPS-1)
     sta gap
 @gaploop:
@@ -640,6 +574,10 @@ gaps_F0:
     rts
 
 gaps_F1:
+.if DEBUG
+    lda #'1'
+    jsr CONOUT
+.endif
     lda #4
     sta gap_frame_data + 0  ;11000000b      ; Cell 1 (Right-moving gaps)
     lda #6
@@ -652,6 +590,10 @@ gaps_F1:
     jmp gaps_F123
 
 gaps_F2:
+.if DEBUG
+    lda #'2'
+    jsr CONOUT
+.endif
     lda #3
     sta gap_frame_data + 0  ;11110000b      ; Cell 1 (Right-moving gaps)
     lda #7
@@ -663,6 +605,10 @@ gaps_F2:
     jmp gaps_F123
 
 gaps_F3:
+.if DEBUG
+    lda #'3'
+    jsr CONOUT
+.endif
     lda #2
     sta gap_frame_data + 0  ;11111100b      ; Cell 1 (Right-moving gaps)
     lda #8
@@ -809,9 +755,9 @@ flush_sprite_attributes:
     ldx #>SPRITEATTRIBUTETABLE
     jsr set_write_address
 
-    lda #<jsprite
+    lda #<sprite0
     sta ptr1
-    lda #>jsprite
+    lda #>sprite0
     sta ptr1+1
     ldy #0
 @L1:
@@ -825,12 +771,20 @@ flush_sprite_attributes:
     rts
 
 reset_data:
-    stz frame
-    stz j_j_fr
-    stz j_r_fr
-    stz j_s_fr
     lda #8
     sta jline
+    stz jack_jump_frame
+    lda #JACK_STATE::IDLE
+    sta jack_state
+    lda #JACK_ANIM::IDLE
+    sta jack_anim
+    stz frame
+    stz tmp1
+    stz tmp2
+    stz gap
+    stz line
+    lda #1
+    sta gap_count
     rts
 
 rnd:
@@ -848,21 +802,9 @@ noEor:
 sound:
     rts
 
-exit:
-    jmp WBOOT
-
 .segment "DATA"
-line:   .byte 0
-gap:    .byte 0
-jline:  .byte 8
-jprev:  .byte 0
-jstate: .byte jstate::still
-j_s_fr: .byte 0     ; frame counter for when jack is standing still.
-j_r_fr: .byte 0     ; frame counter for when jack is running.
-j_j_fr: .byte 0     ; frame counter for when jack is jumping.
-stun_ctr:.byte 0    ; counter for stunn time.
 
-jsprite: .tag sprite
+sprite0: .tag sprite
 .byte $d0      ; end of sprites marker
 
 
@@ -902,6 +844,7 @@ gap_nines:
 gap_tens:
     .byte 5,5,5,5,5,5,5,5
 
+WINNER: .byte "You WIN!", 10, 13, 0
 font_start:
 .include "font.s"
 font_end:
