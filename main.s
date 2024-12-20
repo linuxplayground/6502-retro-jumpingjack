@@ -235,6 +235,10 @@ do_jump:
     lda #jstate::crash
     sta jstate
     stz j_j_fr
+    lda #$26
+    sta vdp_reg
+    lda #$87
+    sta vdp_reg
 @exit:
     jmp game_loop
 
@@ -270,6 +274,7 @@ animate_jack_still:
     lda frame
     cmp #$10
     bne :+
+    jsr sfx_still
     lda j_s_fr
     inc
     asl
@@ -308,6 +313,7 @@ animate_jack_right:
     inc j_r_fr
 :   rts
 animate_jack_jump_good_1:
+    jsr sfx_jump
     lda j_j_fr
     and #3
     asl
@@ -324,6 +330,7 @@ animate_jack_jump_good_1:
     stz j_j_fr
 :   rts
 animate_jack_jump_good_2:
+    jsr sfx_jump
     inc j_j_fr
     lda j_j_fr
     cmp #4
@@ -333,6 +340,7 @@ animate_jack_jump_good_2:
     stz j_j_fr
 :   rts
 animate_jack_jump_good_3:
+    jsr sfx_jump
     inc j_j_fr
     lda j_j_fr
     cmp #4
@@ -366,6 +374,7 @@ new_gap:
     rts
 
 animate_jack_falling:
+    jsr sfx_fall
     lda #68
     sta jsprite + sprite::pa
     inc j_j_fr
@@ -405,6 +414,10 @@ animate_jack_crash:
     sta jsprite + sprite::pa
     stz frame
     stz j_j_fr
+    lda #$2B
+    sta vdp_reg
+    lda #$87
+    sta vdp_reg
 :   rts
 animate_jack_crash_fall:
     lda frame
@@ -485,11 +498,19 @@ move_jack_jump:
 move_jack_left:
     dec jsprite + sprite::xp
     dec jsprite + sprite::xp
-    rts
+    lda frame
+    and #3
+    bne :+
+    jmp sfx_run
+:   rts
 move_jack_right:
     inc jsprite + sprite::xp
     inc jsprite + sprite::xp
-    rts
+    lda frame
+    and #3
+    bne :+
+    jmp sfx_run
+:   rts
 move_jack_jump_good_123:
     dec jsprite + sprite::yp
     dec jsprite + sprite::yp
@@ -909,8 +930,51 @@ noEor:
     sta seed
     rts
 
-sound:
+sfx_still:
+    lda j_s_fr
+    and #3
+    bne :+
+    lda #7
+    ldy #4
+    jmp sn_note
     rts
+:   cmp #2
+    bne :+
+    lda #4
+    ldy #7
+    jmp sn_note
+:   rts
+
+sfx_run:
+    lda #3
+    ldy #9
+    jmp sn_note
+
+sfx_jump:
+    pha
+    phx
+    phy
+    lda frame
+    and #15
+    tax
+    lda jump_notes,x
+    tay
+    lda #0
+    jsr sn_note
+    ply
+    plx
+    pla
+    rts
+
+sfx_crash:
+    rts
+
+sfx_fall:
+    ldx j_j_fr
+    lda fall_notes,x
+    tay
+    lda #0
+    jmp sn_note
 
 exit:
     jmp WBOOT
@@ -931,6 +995,8 @@ jsprite: .tag sprite
 
 
 .rodata
+jump_notes: .byte 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+fall_notes: .byte 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 
 gap_and_idx:
     .word 0
