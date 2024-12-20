@@ -40,6 +40,8 @@ gap_frame_data:
 
 seed:   .byte 0 ; initial seed for random number gen.
 gap_count: .byte 0
+gap_left_offset: .byte 0
+gap_right_offset: .byte 0
 
 .code
 
@@ -144,10 +146,13 @@ game_loop:
     inc gaps_pos+1
     inc gaps_pos+2
     inc gaps_pos+3
+    inc gap_right_offset
+
     dec gaps_pos+4
     dec gaps_pos+5
     dec gaps_pos+6
     dec gaps_pos+7
+    dec gap_left_offset
 
     jsr test_fall
     bcc @key
@@ -216,11 +221,12 @@ do_jump:
     jsr get_xy_gap  ; above jack
     sta jprev
     jsr test_gap
-    bcs @crash
+    bcs @good
     lda jprev
     dec             ; one to the left
     jsr test_gap
     bcc @crash
+@good:
     lda #jstate::jump_1
     sta jstate
     stz j_j_fr
@@ -530,6 +536,9 @@ test_fall:
     jsr test_gap
 :   rts             ; CARRY SET then falling, CARRY CLEAR then not falling
 
+; Tests if gap position in A matches any of the current gap positions.
+; CC on no match
+; CS on match
 test_gap:
     ldx #7
 @L0:
@@ -610,18 +619,27 @@ draw_line:
 
 
 do_new_gap:
-    lda gap_count
+    lda gap_count       ; if gap_count == 8 then no more gaps to add
     cmp #8
-    beq :+
-    inc gap_count
-    ldy gap_count
-    lda #<gaps_pos
+    beq @exit
+    inc gap_count       ; increment gap count
+    ldy gap_count       ; save gap count into y for indirect offset
+    ldx gap_left_offset
+    cpy #4              ; if y >= 4 then use left offset
+    bcs :+
+    ldx gap_right_offset ; else use right offset
+:
+    stx tmp1            ; save the offset into tmp1 for adding later
+    lda #<gaps_pos      ; get the ptr to the gaps table
     sta ptr1
     lda #>gaps_pos
     sta ptr1+1
-    jsr rnd
-    sta (ptr1),y
-:
+    jsr rnd             ; random number
+    and #$fc            ; make multiple of 4
+    clc
+    adc tmp1            ; add to offset - this should prevent overlap
+    sta (ptr1),y        ; update the gap position indexed by y.
+@exit:
     rts
 
 draw_gaps:
