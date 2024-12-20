@@ -2,7 +2,7 @@
 ; Library functions for basic control of the SN76489 attached to the VIA
 
 .include "io.inc"
-.export sn_start, sn_stop, sn_silence, sn_note, sn_play_note, sn_send
+.export sn_start, sn_stop, sn_silence, sn_note, sn_play_note, sn_send, sn_noise
 
 FIRST   = %10000000
 SECOND  = %00000000
@@ -56,9 +56,17 @@ sn_silence:
     jsr sn_send
     rts
 
+sn_noise:
+    lda #4
+    ora #(FIRST|CHAN_N)
+    jsr sn_send
+    lda #(FIRST|CHAN_N|VOL|VOL_MAX)
+    jsr sn_send
+    rts
+
 sn_note:
     jsr sn_play_note
-    ldy #$20
+    ldy #$30
 @d1:
     ldx #$00
 @d2:
@@ -69,7 +77,8 @@ sn_note:
     jmp sn_silence
 
 sn_play_note:
-    ora #(FIRST|CHAN_1|TONE)
+
+    lda #(FIRST|CHAN_1|TONE)
     jsr sn_send
     tya
     ora #(SECOND|CHAN_1|TONE)

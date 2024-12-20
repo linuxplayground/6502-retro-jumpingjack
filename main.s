@@ -5,10 +5,6 @@
 
 NUM_GAPS = 8
 
-JSFRONT=8
-JSLEFT = 4
-JSRIGHT = 12
-
 .autoimport
 .globalzp ptr1, ptr2, tmp1
 
@@ -239,6 +235,7 @@ do_jump:
     sta vdp_reg
     lda #$87
     sta vdp_reg
+    jsr sn_noise
 @exit:
     jmp game_loop
 
@@ -272,7 +269,7 @@ animate_frame_jump:
 animate_jack_still:
     stz j_j_fr
     lda frame
-    cmp #$10
+    cmp #$20
     bne :+
     jsr sfx_still
     lda j_s_fr
@@ -313,7 +310,6 @@ animate_jack_right:
     inc j_r_fr
 :   rts
 animate_jack_jump_good_1:
-    jsr sfx_jump
     lda j_j_fr
     and #3
     asl
@@ -328,9 +324,9 @@ animate_jack_jump_good_1:
     lda #jstate::jump_2
     sta jstate
     stz j_j_fr
+    jsr sfx_jump
 :   rts
 animate_jack_jump_good_2:
-    jsr sfx_jump
     inc j_j_fr
     lda j_j_fr
     cmp #4
@@ -338,9 +334,9 @@ animate_jack_jump_good_2:
     lda #jstate::jump_3
     sta jstate
     stz j_j_fr
+    jsr sfx_jump
 :   rts
 animate_jack_jump_good_3:
-    jsr sfx_jump
     inc j_j_fr
     lda j_j_fr
     cmp #4
@@ -353,6 +349,7 @@ animate_jack_jump_good_3:
     dec jline
     lda jline
     beq win
+    jsr sfx_jump
     jmp new_gap
 :   rts
 win:
@@ -374,8 +371,11 @@ new_gap:
     rts
 
 animate_jack_falling:
+    lda frame
+    and #3
+    bne :+
     jsr sfx_fall
-    lda #68
+:   lda #68
     sta jsprite + sprite::pa
     inc j_j_fr
     lda j_j_fr
@@ -386,7 +386,7 @@ animate_jack_falling:
     stz j_j_fr
     lda #84
     sta jsprite + sprite::pa
-    lda #8
+    lda #16
     sta stun_ctr
     lda jline
     cmp #8
@@ -418,6 +418,7 @@ animate_jack_crash:
     sta vdp_reg
     lda #$87
     sta vdp_reg
+    jsr sn_silence
 :   rts
 animate_jack_crash_fall:
     lda frame
@@ -439,10 +440,11 @@ animate_jack_crash_fall:
     lda #84
     sta jsprite + sprite::pa
     stz frame
-    lda #16
+    lda #32
     sta stun_ctr
 :   rts
 animate_jack_stun:
+    jsr sfx_stun
     lda frame
     and #1
     bne :+
@@ -498,19 +500,11 @@ move_jack_jump:
 move_jack_left:
     dec jsprite + sprite::xp
     dec jsprite + sprite::xp
-    lda frame
-    and #3
-    bne :+
     jmp sfx_run
-:   rts
 move_jack_right:
     inc jsprite + sprite::xp
     inc jsprite + sprite::xp
-    lda frame
-    and #3
-    bne :+
     jmp sfx_run
-:   rts
 move_jack_jump_good_123:
     dec jsprite + sprite::yp
     dec jsprite + sprite::yp
@@ -931,50 +925,58 @@ noEor:
     rts
 
 sfx_still:
-    lda j_s_fr
-    and #3
-    bne :+
-    lda #7
-    ldy #4
+    ldx j_s_fr
+    lda run_notes,x
+    tay
     jmp sn_note
-    rts
-:   cmp #2
-    bne :+
-    lda #4
-    ldy #7
+
+sfx_run:
+    lda frame
+    and #7
+    bne :+++
+    ldx run_note_toggle
+    beq :+
+    dec run_note_toggle
+    bra :++
+:   inc run_note_toggle
+:   lda run_notes,x
+    tay
     jmp sn_note
 :   rts
 
-sfx_run:
-    lda #3
-    ldy #9
-    jmp sn_note
-
 sfx_jump:
-    pha
-    phx
-    phy
-    lda frame
-    and #15
-    tax
+    inc jump_note_ctr
+    ldx jump_note_ctr
+    cpx #2
+    bne :+
+    lda #$ff
+    sta jump_note_ctr
+:
     lda jump_notes,x
     tay
-    lda #0
-    jsr sn_note
-    ply
-    plx
-    pla
-    rts
-
-sfx_crash:
-    rts
+    jmp sn_note
+:   rts
 
 sfx_fall:
-    ldx j_j_fr
+    inc jump_note_ctr
+    ldx jump_note_ctr
+    cpx #2
+    bne :+
+    lda #$ff
+    sta jump_note_ctr
+:
     lda fall_notes,x
     tay
-    lda #0
     jmp sn_note
+:   rts
+
+sfx_stun:
+    lda frame
+    and #3
+    bne :+
+    ldy #3
+    jmp sn_note
+:   rts
 
 exit:
     jmp WBOOT
@@ -989,14 +991,17 @@ j_s_fr: .byte 0     ; frame counter for when jack is standing still.
 j_r_fr: .byte 0     ; frame counter for when jack is running.
 j_j_fr: .byte 0     ; frame counter for when jack is jumping.
 stun_ctr:.byte 0    ; counter for stunn time.
+run_note_toggle: .byte 0 ; alternating note toggle
+jump_note_ctr:  .byte $ff  ; counter of notes for jumping and falling.
 
 jsprite: .tag sprite
 .byte $d0      ; end of sprites marker
 
 
 .rodata
-jump_notes: .byte 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-fall_notes: .byte 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+jump_notes: .byte 15, 13, 11
+fall_notes: .byte 11, 13, 15
+run_notes:  .byte 7, 11, 7, 11
 
 gap_and_idx:
     .word 0
