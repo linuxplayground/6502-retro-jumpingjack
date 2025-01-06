@@ -120,18 +120,10 @@ vdp_color_char:
 
 
 vdp_wait:
-    lda VDP_SYNC
-    cmp #$80
-    bne vdp_wait
+    bit VDP_SYNC
+    bpl vdp_wait
     stz VDP_SYNC
-.if DEBUG
-    jsr CONIN
-    cmp #$1b
-    beq @exit
-.endif
     rts
-@exit:
-    jmp WBOOT
 
 vdp_flush:
     lda #<NAMETABLE
@@ -143,6 +135,7 @@ vdp_flush:
     sta ptr1 + 1
     ldy #0
     ldx #3
+    jsr vdp_wait
 :   lda (ptr1),y
     sta vdp_ram
     iny

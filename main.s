@@ -99,7 +99,7 @@ game_loop:
     ; frame 1/4
     jsr draw_gaps
     jsr move_jack
-    jsr vdp_wait
+    ;jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
     inc frame
@@ -108,7 +108,7 @@ game_loop:
     ; frame 2/4
     jsr draw_gaps
     jsr move_jack
-    jsr vdp_wait
+    ;jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
     inc frame
@@ -117,7 +117,7 @@ game_loop:
     ; frame 3/4
     jsr draw_gaps
     jsr move_jack
-    jsr vdp_wait
+    ;jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
     inc frame
@@ -126,7 +126,7 @@ game_loop:
     ; frame 4/4
     jsr draw_gaps
     jsr move_jack
-    jsr vdp_wait
+    ;jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
     inc frame
@@ -167,6 +167,7 @@ game_loop:
     bne :+
     lda #jstate::jump_1
     sta jstate
+    stz jump_note_ctr
     bra @next
 :   cmp #'f'
     bne :+
@@ -176,6 +177,7 @@ game_loop:
     stz j_j_fr
     lda #jstate::falling
     sta jstate
+    stz jump_note_ctr
     bra @next
 :   cmp #'a'
     bne :+
@@ -945,6 +947,9 @@ sfx_run:
 :   rts
 
 sfx_jump:
+    lda frame
+    and #1
+    bne :+
     inc jump_note_ctr
     lda jump_note_ctr
     and #3
@@ -953,9 +958,12 @@ sfx_jump:
     lda jump_notes,x
     tay
     jmp sn_note
-    rts
+:   rts
 
 sfx_fall:
+    lda frame
+    and #1
+    bne :+
     inc jump_note_ctr
     lda jump_note_ctr
     and #3
@@ -964,11 +972,11 @@ sfx_fall:
     lda fall_notes,x
     tay
     jmp sn_note
-    rts
+:   rts
 
 sfx_stun:
     lda stun_ctr
-    and #3
+    and #1
     bne :+
     ldx jump_note_ctr
     inc jump_note_ctr
