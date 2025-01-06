@@ -99,42 +99,38 @@ game_loop:
     ; frame 1/4
     jsr draw_gaps
     jsr move_jack
-    inc frame
-    jsr animate_jack
-
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
+    inc frame
+    jsr animate_jack
 
     ; frame 2/4
     jsr draw_gaps
     jsr move_jack
-    inc frame
-    jsr animate_jack
-
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
+    inc frame
+    jsr animate_jack
 
     ; frame 3/4
     jsr draw_gaps
     jsr move_jack
-    inc frame
-    jsr animate_jack
-
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
+    inc frame
+    jsr animate_jack
 
     ; frame 4/4
     jsr draw_gaps
     jsr move_jack
-    inc frame
-    jsr animate_jack
-
     jsr vdp_wait
     jsr vdp_flush
     jsr flush_sprite_attributes
+    inc frame
+    jsr animate_jack
 
     ; move gaps and player
     ; move gaps
@@ -295,6 +291,7 @@ animate_jack_left:
     adc #36
     sta jsprite + sprite::pa
     inc j_r_fr
+    jmp sfx_run
 :   rts
 animate_jack_right:
     lda frame
@@ -308,6 +305,7 @@ animate_jack_right:
     adc #20
     sta jsprite + sprite::pa
     inc j_r_fr
+    jmp sfx_run
 :   rts
 animate_jack_jump_good_1:
     lda j_j_fr
@@ -384,6 +382,7 @@ animate_jack_falling:
     lda #jstate::stun
     sta jstate
     stz j_j_fr
+    stz jump_note_ctr
     lda #84
     sta jsprite + sprite::pa
     lda #16
@@ -444,10 +443,10 @@ animate_jack_crash_fall:
     sta stun_ctr
 :   rts
 animate_jack_stun:
-    jsr sfx_stun
     lda frame
     and #1
     bne :+
+    jsr sfx_stun
     lda stun_ctr
     and #3
     asl
@@ -500,11 +499,11 @@ move_jack_jump:
 move_jack_left:
     dec jsprite + sprite::xp
     dec jsprite + sprite::xp
-    jmp sfx_run
+    rts
 move_jack_right:
     inc jsprite + sprite::xp
     inc jsprite + sprite::xp
-    jmp sfx_run
+    rts
 move_jack_jump_good_123:
     dec jsprite + sprite::yp
     dec jsprite + sprite::yp
@@ -603,8 +602,6 @@ get_gap_xy:
     rts
 
 
-
-
 draw_lines:
     ldy #0
     jsr draw_line
@@ -631,7 +628,6 @@ draw_line:
     dey
     bpl :-
     rts
-
 
 do_new_gap:
     lda gap_count       ; if gap_count == 8 then no more gaps to add
@@ -677,7 +673,7 @@ gaps_frame_jump:
 gaps_F0:
     lda #(NUM_GAPS-1)
     sta gap
-@gaploop:
+@gaploop_1:
     ; draw the outsides
     ldx gap
     lda gaps_pos,x
@@ -693,7 +689,12 @@ gaps_F0:
     jsr get_gap_xy      ; CELL 4
     lda #1
     jsr vdp_char_xy
+    dec gap
+    bpl @gaploop_1
 
+    lda #(NUM_GAPS-1)
+    sta gap
+@gaploop_2:
     ; draw the middle gaps
     ldx gap
     lda gaps_pos,x
@@ -715,7 +716,7 @@ gaps_F0:
 
     ; gaploop
     dec gap
-    bpl @gaploop
+    bpl @gaploop_2
     rts
 
 gaps_F1:
@@ -874,7 +875,6 @@ gap_and_update:
     lda gap_and_idx+1,x
     sta ptr2 + 1
     ldy tmp2    ; desired pattern in Y
-    dey
     lda (ptr2),y
     sta tmp2    ; save new pattern
     pla
@@ -932,49 +932,51 @@ sfx_still:
 
 sfx_run:
     lda frame
-    and #7
-    bne :+++
+    and #3
+    bne :+
     ldx run_note_toggle
-    beq :+
-    dec run_note_toggle
-    bra :++
-:   inc run_note_toggle
-:   lda run_notes,x
+    lda run_notes,x
     tay
-    jmp sn_note
+    jsr sn_note
+    inc run_note_toggle
+    lda run_note_toggle
+    and #1
+    sta run_note_toggle
 :   rts
 
 sfx_jump:
     inc jump_note_ctr
-    ldx jump_note_ctr
-    cpx #2
-    bne :+
-    lda #$ff
+    lda jump_note_ctr
+    and #3
     sta jump_note_ctr
-:
+    tax
     lda jump_notes,x
     tay
     jmp sn_note
-:   rts
+    rts
 
 sfx_fall:
     inc jump_note_ctr
-    ldx jump_note_ctr
-    cpx #2
-    bne :+
-    lda #$ff
+    lda jump_note_ctr
+    and #3
     sta jump_note_ctr
-:
+    tax
     lda fall_notes,x
     tay
     jmp sn_note
-:   rts
+    rts
 
 sfx_stun:
-    lda frame
+    lda stun_ctr
     and #3
     bne :+
-    ldy #3
+    ldx jump_note_ctr
+    inc jump_note_ctr
+    lda jump_note_ctr
+    and #3
+    sta jump_note_ctr
+    lda fall_notes,x
+    tay
     jmp sn_note
 :   rts
 
@@ -992,7 +994,7 @@ j_r_fr: .byte 0     ; frame counter for when jack is running.
 j_j_fr: .byte 0     ; frame counter for when jack is jumping.
 stun_ctr:.byte 0    ; counter for stunn time.
 run_note_toggle: .byte 0 ; alternating note toggle
-jump_note_ctr:  .byte $ff  ; counter of notes for jumping and falling.
+jump_note_ctr:  .byte $0  ; counter of notes for jumping and falling.
 
 jsprite: .tag sprite
 .byte $d0      ; end of sprites marker
@@ -1004,38 +1006,43 @@ fall_notes: .byte 11, 13, 15
 run_notes:  .byte 7, 11, 7, 11
 
 gap_and_idx:
-    .word 0
-    .addr gap_ones
-    .addr gap_twos
-    .addr gap_threes
-    .addr gap_fours
-    .addr gap_fives
-    .addr gap_sixes
-    .addr gap_sevens
-    .addr gap_eights
-    .addr gap_nines
-    .addr gap_tens
+    .word   gap_zeros
+    .word   gap_ones
+    .word   gap_twos
+    .word   gap_threes
+    .word   gap_fours
+    .word   gap_fives
+    .word   gap_sixes
+    .word   gap_sevens
+    .word   gap_eights
+    .word   gap_nines
+    .word   gap_tens
+    .word   gap_elevens
 
+gap_zeros:
+    .byte 0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
 gap_ones:
-    .byte 1,2,3,4,5,6,7,8
+    .byte 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11
 gap_twos:
-    .byte 2,2,3,4,5,5,9,10
+    .byte 0, 2, 2, 3, 4, 5, 5, 9,11, 9,10,11
 gap_threes:
-    .byte 3,3,3,4,5,6,5,9
+    .byte 0, 3, 3, 3, 4, 5, 5, 5,10, 5,10,10
 gap_fours:
-    .byte 4,4,4,4,5,10,4,5
+    .byte 0, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5
 gap_fives:
-    .byte 5,5,5,5,5,5,5,5
+    .byte 0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
 gap_sixes:
-    .byte 6,5,6,10,5,6,6,6
+    .byte 0, 6, 5, 5, 5, 5, 6, 6, 6, 5, 5, 5
 gap_sevens:
-    .byte 7,9,5,4,5,6,7,7
+    .byte 0, 7, 9, 5, 5, 5, 6, 7, 7, 9, 5, 9
 gap_eights:
-    .byte 8,10,9,5,5,6,7,8
+    .byte 0, 8,11,10, 5, 5, 6, 7, 8, 9,10,11
 gap_nines:
-    .byte 5,5,5,5,5,5,5,5
+    .byte 0, 9, 9, 5, 5, 5, 5, 9, 9, 9, 5, 9
 gap_tens:
-    .byte 5,5,5,5,5,5,5,5
+    .byte 0,10,10,10, 5, 5, 5, 5,10, 5,10,10
+gap_elevens:
+    .byte 0,11,11,10, 5, 5, 5, 9,11, 9,10,11
 
 font_start:
 .include "font.s"
