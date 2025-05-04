@@ -80,7 +80,7 @@ start:
 
 seed_loop:
     inc seed
-    jsr CONST
+    jsr bios_const
     bcc seed_loop
 
     jsr rnd
@@ -153,11 +153,11 @@ game_loop:
     stz j_j_fr
     jmp game_loop
 @key:
-    jsr CONST
+    jsr bios_const
     sta tmp1
     cmp #$1b
     bne :+
-    jmp WBOOT
+    jmp bios_wboot
 :   lda jstate
     cmp #jstate::jump_1
     bcc :+
@@ -353,7 +353,7 @@ animate_jack_jump_good_3:
     jmp new_gap
 :   rts
 win:
-    jmp WBOOT
+    jmp bios_wboot
 
 new_gap:
     lda gap_count
@@ -989,7 +989,7 @@ sfx_stun:
 :   rts
 
 exit:
-    jmp WBOOT
+    jmp bios_wboot
 
 .segment "DATA"
 line:   .byte 0

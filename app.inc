@@ -1,27 +1,39 @@
 ; vim: set ft=asm_ca65 et ts=4 sw=4
-SFOS        = $200
-REBOOT      = SFOS      + 3
-WBOOT       = REBOOT    + 3
-CONOUT      = WBOOT     + 3
-CONIN       = CONOUT    + 3
-CONST       = CONIN     + 3
-CONPUTS     = CONST     + 3
-CONBYTE     = CONPUTS   + 3
-CONBEEP     = CONBYTE   + 3
-SN_START    = CONBEEP   + 3
-SN_SILENCE  = SN_START  + 3
-SN_STOP     = SN_SILENCE + 3
-SN_SEND     = SN_STOP   + 3
-LED_ON      = SN_SEND   + 3
-LED_OFF     = LED_ON    + 3
-GET_BUTTON  = LED_OFF   + 3
-ERROR_CODE  = GET_BUTTON + 3
+sfos_entry      = $200
+bios_cboot      = $203
+bios_wboot      = $206
+bios_conout     = $209
+bios_conin      = $20c
+bios_const      = $20f
+bios_puts       = $212
+bios_prbyte     = $215
 
-RSTFAR      = $231
+bios_setdma     = $218
+bios_setlba     = $21b
+bios_sdread     = $21e
+bios_sdwrite    = $221
 
-REGA        = $23F
-REGX        = REGA   + 1
-REGY        = REGX   + 1
+bios_sn_beep    = $224
+bios_sn_start   = $227
+bios_sn_silence = $22a
+bios_sn_stop    = $22d
+bios_sn_send    = $230
+bios_led_on     = $233
+bios_led_off    = $236
+bios_get_button = $239
+
+bios_error_code = $23c
+
+bios_rstfar     = $23d
+
+bios_rega       = $24d
+bios_regx       = bios_rega   + 1
+bios_regy       = bios_regx   + 1
+
+bios_userirq_vec = $250
+bios_usernmi_vec = $252
+
+bios_ticks      = $65F    ; 32bit value holding number of 60hz periods since boot
 ;
 ; hard coded addresses that SFCP uses
 FCB          = $380
@@ -31,8 +43,8 @@ CMDOFFSET    = $3C0    ; pointer into CMDLINE
 SFOS_BUF     = $400
 SFOS_BUF_END = $600
 
-VDP_SYNC     = $65F
-TICKS        = $660    ; 32bit value holding number of 60hz periods since boot
+VDP_SYNC     = $65E
+TICKS        = bios_ticks
 
 ; vdp stuffs
 NAMETABLE               = $3800
