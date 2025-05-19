@@ -15,30 +15,6 @@ tmp1:   .byte 0
 tmp2:   .byte 0
 frame:  .byte 0
 
-.bss
-
-gaps_pos:
-    .byte $00   ; right down
-    .byte $00   ; right down
-    .byte $00   ; right down
-    .byte $00   ; right down
-
-    .byte $00   ; left up
-    .byte $00   ; left up
-    .byte $00   ; left up
-    .byte $00   ; left up
-
-gap_frame_data:
-    .byte 0     ; Cell 1 (Right-moving gaps)
-    .byte 0     ; Cell 3 (Left-moving gaps)
-    .byte 0     ; Cell 4 (Right-moving gaps)
-    .byte 0     ; Cell 0 (Left-moving gaps)
-
-seed:   .byte 0 ; initial seed for random number gen.
-gap_count: .byte 0
-gap_left_offset: .byte 0
-gap_right_offset: .byte 0
-
 .code
 
 start:
@@ -350,25 +326,10 @@ animate_jack_jump_good_3:
     lda jline
     beq win
     jsr sfx_jump
-    jmp new_gap
+    jmp do_new_gap
 :   rts
 win:
     jmp bios_wboot
-
-new_gap:
-    lda gap_count
-    cmp #8
-    beq :+
-    inc gap_count
-    ldy gap_count
-    lda #<gaps_pos
-    sta ptr1
-    lda #>gaps_pos
-    sta ptr1+1
-    jsr rnd
-    sta (ptr1),y
-:
-    rts
 
 animate_jack_falling:
     lda frame
@@ -1006,6 +967,28 @@ jump_note_ctr:  .byte $0  ; counter of notes for jumping and falling.
 
 jsprite: .tag sprite
 .byte $d0      ; end of sprites marker
+
+gaps_pos:
+    .byte $00   ; right down
+    .byte $00   ; right down
+    .byte $00   ; right down
+    .byte $00   ; right down
+
+    .byte $00   ; left up
+    .byte $00   ; left up
+    .byte $00   ; left up
+    .byte $00   ; left up
+
+gap_frame_data:
+    .byte 0     ; Cell 1 (Right-moving gaps)
+    .byte 0     ; Cell 3 (Left-moving gaps)
+    .byte 0     ; Cell 4 (Right-moving gaps)
+    .byte 0     ; Cell 0 (Left-moving gaps)
+
+seed:   .byte 0 ; initial seed for random number gen.
+gap_count: .byte 0
+gap_left_offset: .byte 0
+gap_right_offset: .byte 0
 
 
 .rodata
