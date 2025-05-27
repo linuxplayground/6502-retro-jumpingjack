@@ -1,6 +1,6 @@
 ; vim: set ft=asm_ca65 ts=4 sw=4 et:
-vdp_ram = $bf30
-vdp_reg = $bf31
+vdp_ram         = $bf30
+vdp_reg         = $bf31
 via_portb       = $BF20
 via_porta       = $BF21
 via_ddrb        = $BF22

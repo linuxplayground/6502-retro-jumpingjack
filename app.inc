@@ -1,4 +1,11 @@
 ; vim: set ft=asm_ca65 et ts=4 sw=4
+
+NAMETABLE               = $3800
+COLORTABLE              = $2000
+PATTERNTABLE            = $0000
+SPRITEATTRIBUTETABLE    = $3B00
+SPRITEPATTERNTABLE      = $1800
+
 sfos_entry      = $200
 bios_cboot      = $203
 bios_wboot      = $206
@@ -32,43 +39,8 @@ bios_regy       = bios_regx   + 1
 
 bios_userirq_vec = $250
 bios_usernmi_vec = $252
-
-bios_ticks      = $65F    ; 32bit value holding number of 60hz periods since boot
+bios_delay_ms   = $254
 ;
-; hard coded addresses that SFCP uses
-FCB          = $380
-FCB2         = $3A0
-CMDLINE      = $300
-CMDOFFSET    = $3C0    ; pointer into CMDLINE
-SFOS_BUF     = $400
-SFOS_BUF_END = $600
-
 VDP_SYNC     = $65E
-TICKS        = bios_ticks
 
-; vdp stuffs
-NAMETABLE               = $3800
-COLORTABLE              = $2000
-PATTERNTABLE            = $0000
-SPRITEATTRIBUTETABLE    = $3B00
-SPRITEPATTERNTABLE      = $1800
 
-.enum jstate
-    still   = 0
-    left    = 1
-    right   = 2
-    jump_1  = 3 ; 
-    jump_2  = 4 ; good jump
-    jump_3  = 5 ; good jump
-    falling = 6
-    crash   = 7 ; when a jump is bad
-    crash_fall = 8
-    stun    = 9 ; second half of a bad jump
-.endenum
-
-.struct sprite
-    yp .byte
-    xp .byte
-    pa .byte
-    co .byte
-.endstruct

@@ -77,8 +77,7 @@ sn_note:
     jmp sn_silence
 
 sn_play_note:
-
-    lda #(FIRST|CHAN_1|TONE)
+    ora #(FIRST|CHAN_1|TONE)
     jsr sn_send
     tya
     ora #(SECOND|CHAN_1|TONE)
