@@ -180,10 +180,8 @@ noEor:
 
 
 start:
-    sei                     ; disable interrupts during initial setup
-    ldx #$ff                ; set stack pointer to known location.  Asissts with
-    tsx                     ; debugging
-    jsr initAudio           ; init audio features.
+    sei
+    ;jsr initAudio           ; init audio features.
 
     jsr vdp_g2_init         ; Init the VDP and set up for graphics mode.  See
                             ; lib/vdp.s for detailed description of the mode used.
@@ -1238,7 +1236,7 @@ gap_and_update:
 ; =============================================================================
 
 initAudio:
-    jmp sn_start
+    rts
 
 ; -----------------------------------------------------------------------------
 ; Play a note from the notes tables

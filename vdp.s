@@ -192,8 +192,8 @@ vdp_color_char:
 ; OUTPUT: VOID
 vdp_wait:
     lda VDP_SYNC            ; vdp_sync is set by the interrupt handler to 0x80
-    cmp #$80                ; whenever there is an interrupt.
-    bne vdp_wait            ; if vdp_sync is zero then loop
+    and #$80                ; whenever there is an interrupt.
+    beq vdp_wait            ; if vdp_sync is zero then loop
     stz VDP_SYNC            ; an interrupt was received so set the vdp_sync var
     rts                     ; to zero before exiting.
 
@@ -367,4 +367,4 @@ g2_regs:
     .byte $00                   ; Pattern table address = 0x0000
     .byte $76                   ; Sprite attribute table = 0x3B00
     .byte $03                   ; Sprite pattern table = 0x1800
-    .byte $0a                   ; backdrop color = light yellow
+    .byte $0b                   ; backdrop color = light yellow
