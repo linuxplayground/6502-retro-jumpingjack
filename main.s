@@ -183,7 +183,7 @@ noEor:
 
 start:
     sei
-    ;jsr initAudio           ; init audio features.
+    jsr initAudio           ; init audio features.
 
     jsr vdp_g2_init         ; Init the VDP and set up for graphics mode.  See
                             ; lib/vdp.s for detailed description of the mode used.
@@ -1238,7 +1238,7 @@ gap_and_update:
 ; =============================================================================
 
 initAudio:
-    rts
+    jmp sn_start
 
 ; -----------------------------------------------------------------------------
 ; Play a note from the notes tables

@@ -21,23 +21,12 @@ SN_WE   = %00000100
 SN_READY= %00001000
 SD_MOSI = %10000000
 
+NOTECTR = $65F
 .zeropage
 
 .code
 
 sn_start:
-    lda #(SD_SCK | SD_CS | SD_MOSI | SN_WE)
-    sta via_ddra
-    lda #$ff
-    sta via_ddrb
-
-    ; enable T1 Interupts
-    lda #%01000000
-    sta via_acr
-    lda #$4e ; every 50000 (25ms) on a 2mhz clock
-    sta via_t1cl
-    lda #$c3
-    sta via_t1ch
     jsr sn_silence
     rts
 
@@ -66,15 +55,9 @@ sn_noise:
 
 sn_note:
     jsr sn_play_note
-    ldy #$30
-@d1:
-    ldx #$00
-@d2:
-    dex
-    bne @d2
-    dey
-    bne @d1
-    jmp sn_silence
+    lda #$04    ; how many 12.5ms periods should this note be played for.
+    sta NOTECTR ; The main interrupt handler will silence the note when
+    rts         ; NOTECTR reaches 0.
 
 sn_play_note:
 
