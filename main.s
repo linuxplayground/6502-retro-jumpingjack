@@ -46,6 +46,7 @@ ptr2:   .word 0
 tmp1:   .byte 0             ; temporary variables
 tmp2:   .byte 0
 frame:  .byte 0             ; frame counter
+sound_ctr: .byte 0          ; counter to track note timings
 
 .bss
 ; there is no uninitialised data.
@@ -64,6 +65,7 @@ reset_data:
     stz jprev               ; variable used in test gap routines
     stz jstate              ; variable holding Jack's current state
     stz frame               ; reset the global frame counter
+    stz sound_ctr
     stz j_s_fr              ; still animation sequence frame counter
     stz j_r_fr              ; run animation sequence frame counter
     stz j_j_fr              ; jump (and fall) animation frame counter
