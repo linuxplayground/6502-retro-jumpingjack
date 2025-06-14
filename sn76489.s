@@ -27,6 +27,13 @@ NOTECTR = $65F
 .code
 
 sn_start:
+    lda #$A0
+    sta via_ier
+    lda #$00
+    sta via_acr
+    lda #$FF
+    sta via_t2ch
+    sta via_t2cl
     jsr sn_silence
     rts
 
