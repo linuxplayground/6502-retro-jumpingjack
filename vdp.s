@@ -190,20 +190,11 @@ vdp_color_char:
 ; refresh rate.
 ; INPUT: VOID
 ; OUTPUT: VOID
-;vdp_wait:
-;    bit VDP_SYNC            ; vdp_sync is set by the interrupt handler to 0x80
-;    bpl vdp_wait
-;    stz VDP_SYNC            ; an interrupt was received so set the vdp_sync var
-;    rts                     ; to zero before exiting.
-
 vdp_wait:
-    ldy #$20
-:   ldx #$00
-:   dex
-    bne :-
-    dey
-    bne :--
-    rts
+    bit VDP_SYNC            ; vdp_sync is set by the interrupt handler to 0x80
+    bpl vdp_wait
+    stz VDP_SYNC            ; an interrupt was received so set the vdp_sync var
+    rts                     ; to zero before exiting.
 
 ; Copy every byte in the framebuffer to the the VDP NAMETABLE VRAM area as fast
 ; as possible.
