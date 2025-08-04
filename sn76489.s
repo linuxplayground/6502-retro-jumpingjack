@@ -21,7 +21,7 @@ SN_WE   = %00000100
 SN_READY= %00001000
 SD_MOSI = %10000000
 
-_notectr = $65F
+_notectr = $257
 
 .zeropage
 

@@ -366,4 +366,4 @@ g2_regs:
     .byte $00                   ; Pattern table address = 0x0000
     .byte $76                   ; Sprite attribute table = 0x3B00
     .byte $03                   ; Sprite pattern table = 0x1800
-    .byte $0b                   ; backdrop color = light yellow
+    .byte $0a                   ; backdrop color = light yellow
