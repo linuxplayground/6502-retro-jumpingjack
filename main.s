@@ -79,7 +79,7 @@ reset_data:
     sta jump_note_ctr       ; counter is pre-incremented in sfx_jump routine.
     lda #4                  ; start with 5 lives.  0-4
     sta lives
-    lda #(192-16)           ; Jack starts centered on bottom of screen.
+    lda #(191-16)           ; Jack starts centered on bottom of screen.
     sta jsprite + sprite::yp
     lda #128
     sta jsprite + sprite::xp

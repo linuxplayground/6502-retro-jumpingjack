@@ -10,3 +10,4 @@ in_file.close()
 out_file.write(bytearray(int(page, base=16).to_bytes(2, "little")))
 out_file.write(binary_input)
 out_file.close()
+
